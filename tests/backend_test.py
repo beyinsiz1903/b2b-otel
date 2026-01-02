@@ -29,8 +29,10 @@ class HotelMatchTester:
         # Test data storage
         self.hotel_a_id = None
         self.hotel_a_token = None
+        self.hotel_a_email = None
         self.hotel_b_id = None
         self.hotel_b_token = None
+        self.hotel_b_email = None
         self.listing_id = None
         self.request_id = None
         self.match_id = None
