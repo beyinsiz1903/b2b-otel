@@ -368,6 +368,8 @@ def listing_to_public(doc: Dict[str, Any]) -> AvailabilityListingPublic:
         price_max=doc["price_max"],
         availability_status=doc["availability_status"],
         is_locked=doc.get("is_locked", False),
+        image_urls=doc.get("image_urls"),
+        features=doc.get("features"),
     )
 
 
