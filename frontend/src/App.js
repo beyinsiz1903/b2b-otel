@@ -73,6 +73,7 @@ const ProtectedRoute = ({ children }) => {
 
 const LoginPage = () => {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState("");
@@ -84,6 +85,7 @@ const LoginPage = () => {
     setLoading(true);
     try {
       await login(email, password);
+      navigate("/dashboard");
     } catch (err) {
       setError("Giriş başarısız. Bilgileri kontrol edin.");
     } finally {
