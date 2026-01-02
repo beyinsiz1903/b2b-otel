@@ -534,6 +534,9 @@ class HotelMatchTester:
         assert self_hotel["id"] == self.hotel_b_id, "Self hotel should be Hotel B"
         
         # Other should be Hotel A
+        assert other_hotel["id"] == self.hotel_a_id, "Other hotel should be Hotel A"
+        
+        self.log("Progressive disclosure working: Hotel B sees both hotels' full details", "success")
     
     def test_unauthorized_match_access(self):
         """Test that Hotel C (not party to match) gets 403 when accessing match detail"""
