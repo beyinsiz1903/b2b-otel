@@ -322,6 +322,136 @@ class HotelMatchTester:
         
         self.log("Listings are properly anonymous (no hotel_id exposed)", "success")
     
+    def test_create_listing_with_images_and_features(self):
+        """Test creating listing with image_urls and features (Phase 3.2)"""
+        headers = {"Authorization": f"Bearer {self.hotel_a_token}"}
+        
+        start_date = datetime.now() + timedelta(days=5)
+        end_date = start_date + timedelta(days=3)
+        
+        payload = {
+            "region": "Kartepe",
+            "micro_location": "Merkez",
+            "concept": "Luxury Chalet",
+            "capacity_label": "3+1 Chalet",
+            "pax": 6,
+            "date_start": start_date.isoformat(),
+            "date_end": end_date.isoformat(),
+            "nights": 3,
+            "price_min": 5000.0,
+            "price_max": 7000.0,
+            "availability_status": "available",
+            "image_urls": [
+                "https://example.com/image1.jpg",
+                "https://example.com/image2.jpg",
+                "https://example.com/image3.jpg"
+            ],
+            "features": ["Şömine", "Göl manzarası", "Jakuzili", "Özel bahçe", "Barbekü"]
+        }
+        
+        response = requests.post(f"{self.base_url}/listings", json=payload, headers=headers)
+        self.assert_status(response, 200, "Failed to create listing with images and features")
+        
+        data = response.json()
+        self.assert_field(data, "id", "Listing ID not returned")
+        self.assert_field(data, "image_urls", "image_urls field missing")
+        self.assert_field(data, "features", "features field missing")
+        
+        assert isinstance(data["image_urls"], list), "image_urls should be a list"
+        assert len(data["image_urls"]) == 3, f"Expected 3 images, got {len(data['image_urls'])}"
+        assert data["image_urls"][0] == "https://example.com/image1.jpg", "First image URL mismatch"
+        
+        assert isinstance(data["features"], list), "features should be a list"
+        assert len(data["features"]) == 5, f"Expected 5 features, got {len(data['features'])}"
+        assert "Şömine" in data["features"], "Feature 'Şömine' not found"
+        assert "Jakuzili" in data["features"], "Feature 'Jakuzili' not found"
+        
+        # Store this listing ID for later tests
+        self.listing_with_media_id = data["id"]
+        self.log(f"Listing with images and features created: {self.listing_with_media_id[:8]}...", "success")
+    
+    def test_create_listing_without_images_and_features(self):
+        """Test creating listing without image_urls and features (robustness check)"""
+        headers = {"Authorization": f"Bearer {self.hotel_b_token}"}
+        
+        start_date = datetime.now() + timedelta(days=7)
+        end_date = start_date + timedelta(days=2)
+        
+        payload = {
+            "region": "Sapanca",
+            "micro_location": "Kırkpınar",
+            "concept": "Standard Room",
+            "capacity_label": "1+1",
+            "pax": 2,
+            "date_start": start_date.isoformat(),
+            "date_end": end_date.isoformat(),
+            "nights": 2,
+            "price_min": 2000.0,
+            "price_max": 3000.0,
+            "availability_status": "limited"
+        }
+        
+        response = requests.post(f"{self.base_url}/listings", json=payload, headers=headers)
+        self.assert_status(response, 200, "Failed to create listing without images/features")
+        
+        data = response.json()
+        self.assert_field(data, "id", "Listing ID not returned")
+        
+        # Backend should default to empty lists
+        assert "image_urls" in data, "image_urls field should be present"
+        assert "features" in data, "features field should be present"
+        assert data["image_urls"] == [] or data["image_urls"] is None, "image_urls should be empty or None"
+        assert data["features"] == [] or data["features"] is None, "features should be empty or None"
+        
+        self.log("Listing without images/features created successfully (graceful handling)", "success")
+    
+    def test_get_listings_with_media_fields(self):
+        """Test GET /listings returns image_urls and features in anonymous feed"""
+        headers = {"Authorization": f"Bearer {self.hotel_b_token}"}
+        response = requests.get(f"{self.base_url}/listings", headers=headers)
+        self.assert_status(response, 200, "Failed to get listings")
+        
+        data = response.json()
+        
+        # Find listing with media
+        listing_with_media = next((l for l in data if l.get("id") == getattr(self, "listing_with_media_id", None)), None)
+        
+        if listing_with_media:
+            self.assert_field(listing_with_media, "image_urls", "image_urls missing in anonymous feed")
+            self.assert_field(listing_with_media, "features", "features missing in anonymous feed")
+            
+            assert isinstance(listing_with_media["image_urls"], list), "image_urls should be a list"
+            assert len(listing_with_media["image_urls"]) == 3, "Should have 3 images"
+            assert isinstance(listing_with_media["features"], list), "features should be a list"
+            assert len(listing_with_media["features"]) == 5, "Should have 5 features"
+            
+            self.log("Anonymous feed correctly shows image_urls and features", "success")
+        else:
+            self.log("Listing with media not found in feed (may have been created in different test)", "warning")
+    
+    def test_get_my_listings_with_media_fields(self):
+        """Test GET /listings?mine=true returns image_urls and features"""
+        headers = {"Authorization": f"Bearer {self.hotel_a_token}"}
+        response = requests.get(f"{self.base_url}/listings", params={"mine": True}, headers=headers)
+        self.assert_status(response, 200, "Failed to get my listings")
+        
+        data = response.json()
+        assert isinstance(data, list), "My listings should be a list"
+        
+        # Find listing with media
+        listing_with_media = next((l for l in data if l.get("id") == getattr(self, "listing_with_media_id", None)), None)
+        
+        if listing_with_media:
+            self.assert_field(listing_with_media, "image_urls", "image_urls missing in mine=true")
+            self.assert_field(listing_with_media, "features", "features missing in mine=true")
+            
+            assert len(listing_with_media["image_urls"]) == 3, "Should have 3 images in mine=true"
+            assert len(listing_with_media["features"]) == 5, "Should have 5 features in mine=true"
+            
+            self.log("My listings (mine=true) correctly shows image_urls and features", "success")
+        else:
+            self.log("Listing with media not found in my listings", "warning")
+    
     # ========================================================================
     # REQUEST TESTS
     # ========================================================================
