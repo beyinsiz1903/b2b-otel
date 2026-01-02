@@ -1,6 +1,14 @@
 [
   {
-    "content": "Phase 3.1: End-to-end testing for match list/detail and fee awareness UX",
-    "status": "completed"
+    "content": "Phase 3.2: Extend backend listing model to include images and features (amenities)",
+    "status": "in_progress"
+  },
+  {
+    "content": "Phase 3.2: Update frontend forms and listing cards to capture and display images and features",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 3.2: E2E test image/feature flow (create listing with metadata and verify display)",
+    "status": "pending"
   }
 ]
