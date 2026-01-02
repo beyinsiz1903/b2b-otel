@@ -254,10 +254,6 @@ class HotelMatchTester:
         data = response.json()
         self.hotel_c_token = data["access_token"]
         self.log("Hotel C logged in successfully", "success")
-
-        data = response.json()
-        assert data["id"] == self.hotel_b_id, "Hotel B ID mismatch in /auth/me"
-        self.log(f"Hotel B profile verified: {data['name']}", "success")
     
     # ========================================================================
     # LISTINGS TESTS
