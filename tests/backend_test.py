@@ -661,8 +661,10 @@ class HotelMatchTester:
         # Auth tests
         self.run_test("Register Hotel A", self.test_register_hotel_a)
         self.run_test("Register Hotel B", self.test_register_hotel_b)
+        self.run_test("Register Hotel C", self.test_register_hotel_c)
         self.run_test("Login Hotel A", self.test_login_hotel_a)
         self.run_test("Login Hotel B", self.test_login_hotel_b)
+        self.run_test("Login Hotel C", self.test_login_hotel_c)
         self.run_test("Get Hotel A profile (/auth/me)", self.test_auth_me_hotel_a)
         self.run_test("Get Hotel B profile (/auth/me)", self.test_auth_me_hotel_b)
         
