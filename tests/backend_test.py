@@ -170,11 +170,8 @@ class HotelMatchTester:
     
     def test_login_hotel_b(self):
         """Test login for Hotel B"""
-        timestamp = datetime.now().strftime("%H%M%S")
-        email = f"hotelb_{timestamp}@test.com"
-        
         form_data = {
-            "username": email,
+            "username": self.hotel_b_email,
             "password": "TestPass123!"
         }
         
