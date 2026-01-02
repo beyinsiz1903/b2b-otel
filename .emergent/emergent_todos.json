@@ -1,10 +1,14 @@
 [
   {
-    "content": "Phase 2: Frontend implementation (routing, auth UI, listings, requests, dashboard, match detail)",
-    "status": "completed"
+    "content": "Phase 3.1: Implement /matches list and /matches/:id detail UI consuming backend match APIs",
+    "status": "in_progress"
   },
   {
-    "content": "Phase 2: End-to-end testing with testing_agent_v3 for all user stories",
-    "status": "completed"
+    "content": "Phase 3.1: Add monthly match count and total fee exposure KPIs to dashboard",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 3.1: End-to-end testing for match list/detail and fee awareness UX",
+    "status": "pending"
   }
 ]
