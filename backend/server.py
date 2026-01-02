@@ -339,10 +339,16 @@ async def update_me(update: HotelMeUpdate, current_hotel: Dict[str, Any] = Depen
 async def create_listing(payload: AvailabilityListingCreate, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
     listing_id = str(uuid.uuid4())
     now = now_utc()
+    payload_dict = payload.model_dump()
+    if payload_dict.get("image_urls") is None:
+        payload_dict["image_urls"] = []
+    if payload_dict.get("features") is None:
+        payload_dict["features"] = []
+
     doc = {
         "_id": listing_id,
         "hotel_id": current_hotel["_id"],
-        **payload.model_dump(),
+        **payload_dict,
         "is_locked": False,
         "lock_request_id": None,
         "created_at": now,
