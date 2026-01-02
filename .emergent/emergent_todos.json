@@ -1,10 +1,6 @@
 [
   {
-    "content": "Phase 3.1: Implement /matches list and /matches/:id detail UI consuming backend match APIs",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 3.1: Add monthly match count and total fee exposure KPIs to dashboard",
+    "content": "Phase 3.1: End-to-end testing for match list/detail and fee awareness UX",
     "status": "completed"
   }
 ]
