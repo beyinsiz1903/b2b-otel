@@ -534,6 +534,23 @@ class HotelMatchTester:
         assert self_hotel["id"] == self.hotel_b_id, "Self hotel should be Hotel B"
         
         # Other should be Hotel A
+    
+    def test_unauthorized_match_access(self):
+        """Test that Hotel C (not party to match) gets 403 when accessing match detail"""
+        headers_c = {"Authorization": f"Bearer {self.hotel_c_token}"}
+        
+        # Hotel C tries to access the match between Hotel A and Hotel B
+        response = requests.get(f"{self.base_url}/matches/{self.match_id}", headers=headers_c)
+        self.assert_status(response, 403, "Should return 403 for unauthorized match access")
+        
+        # Verify error message
+        data = response.json()
+        assert "detail" in data, "Error response should contain 'detail' field"
+        assert "not authorized" in data["detail"].lower() or "forbidden" in data["detail"].lower(), \
+            f"Error message should indicate authorization issue, got: {data['detail']}"
+        
+        self.log("Unauthorized match access properly blocked with 403", "success")
+
         assert other_hotel["id"] == self.hotel_a_id, "Other hotel should be Hotel A"
         
         self.log("Progressive disclosure working: Hotel B sees both hotels' full details", "success")
