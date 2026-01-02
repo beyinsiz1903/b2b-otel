@@ -1,14 +1,10 @@
 [
   {
     "content": "Phase 3.2: Extend backend listing model to include images and features (amenities)",
-    "status": "in_progress"
+    "status": "completed"
   },
   {
     "content": "Phase 3.2: Update frontend forms and listing cards to capture and display images and features",
-    "status": "pending"
-  },
-  {
-    "content": "Phase 3.2: E2E test image/feature flow (create listing with metadata and verify display)",
-    "status": "pending"
+    "status": "completed"
   }
 ]
