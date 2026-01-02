@@ -211,6 +211,50 @@ class HotelMatchTester:
         response = requests.get(f"{self.base_url}/auth/me", headers=headers)
         self.assert_status(response, 200, "/auth/me failed for Hotel B")
         
+    
+    def test_register_hotel_c(self):
+        """Test hotel registration for Hotel C (for unauthorized access test)"""
+        timestamp = datetime.now().strftime("%H%M%S%f")
+        self.hotel_c_email = f"hotelc_{timestamp}@test.com"
+        payload = {
+            "name": f"Test Hotel C {timestamp}",
+            "region": "Sapanca",
+            "micro_location": "Kırkpınar",
+            "concept": "Family Resort",
+            "address": "Test Address C",
+            "phone": "+90 555 333 3333",
+            "whatsapp": "+90 555 333 3333",
+            "website": "https://hotelc.example.com",
+            "contact_person": "Manager C",
+            "email": self.hotel_c_email,
+            "password": "TestPass123!"
+        }
+        
+        response = requests.post(f"{self.base_url}/auth/register", json=payload)
+        self.assert_status(response, 200, "Hotel C registration failed")
+        
+        data = response.json()
+        self.hotel_c_id = data["id"]
+        self.log(f"Hotel C registered with ID: {self.hotel_c_id[:8]}... and email: {self.hotel_c_email}", "success")
+    
+    def test_login_hotel_c(self):
+        """Test login for Hotel C"""
+        form_data = {
+            "username": self.hotel_c_email,
+            "password": "TestPass123!"
+        }
+        
+        response = requests.post(
+            f"{self.base_url}/auth/login",
+            data=form_data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+        self.assert_status(response, 200, "Hotel C login failed")
+        
+        data = response.json()
+        self.hotel_c_token = data["access_token"]
+        self.log("Hotel C logged in successfully", "success")
+
         data = response.json()
         assert data["id"] == self.hotel_b_id, "Hotel B ID mismatch in /auth/me"
         self.log(f"Hotel B profile verified: {data['name']}", "success")
