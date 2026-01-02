@@ -356,7 +356,7 @@ async def create_listing(payload: AvailabilityListingCreate, current_hotel: Dict
     }
     await db.availability_listings.insert_one(doc)
     await log_activity(current_hotel["_id"], "create", "availability_listing", listing_id, {"status": payload.availability_status})
-    return AvailabilityListingMine(id=listing_id, **payload.model_dump(), is_locked=False, created_at=now, updated_at=now)
+    return AvailabilityListingMine(id=listing_id, **payload_dict, is_locked=False, created_at=now, updated_at=now)
 
 
 def listing_to_public(doc: Dict[str, Any]) -> AvailabilityListingPublic:
