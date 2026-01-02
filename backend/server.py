@@ -146,6 +146,8 @@ class AvailabilityListingCreate(BaseModel):
     price_min: float
     price_max: float
     availability_status: str = Field(pattern="^(available|limited|alternative)$")
+    image_urls: Optional[List[str]] = None
+    features: Optional[List[str]] = None
 
 
 class AvailabilityListingPublic(BaseModel):
@@ -162,6 +164,8 @@ class AvailabilityListingPublic(BaseModel):
     price_max: float
     availability_status: str
     is_locked: bool
+    image_urls: Optional[List[str]] = None
+    features: Optional[List[str]] = None
 
 
 class AvailabilityListingMine(AvailabilityListingPublic):
