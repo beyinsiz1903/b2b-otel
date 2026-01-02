@@ -362,6 +362,11 @@ const ListingsPage = () => {
       <div className="cards-grid">
         {listings.map((l) => (
           <div className="listing-card" key={l.id} data-testid="listing-card">
+            {l.image_urls && l.image_urls.length > 0 && (
+              <div className="listing-image-wrapper">
+                <img src={l.image_urls[0]} alt="Kapasite görseli" className="listing-image" />
+              </div>
+            )}
             <div className="listing-header">
               <span className="badge-region">{l.region} / {l.micro_location}</span>
               <span className={`status-chip status-${l.availability_status}`}>
@@ -376,6 +381,15 @@ const ListingsPage = () => {
                 {new Date(l.date_end).toLocaleDateString()} ({l.nights} gece)
               </div>
               <div>Fiyat Aralığı: {l.price_min} - {l.price_max} TL</div>
+              {l.features && l.features.length > 0 && (
+                <div className="listing-features">
+                  {l.features.slice(0, 4).map((f) => (
+                    <span key={f} className="feature-badge">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <button
               className="btn-primary w-full mt-2"
@@ -405,6 +419,8 @@ const AvailabilityPage = () => {
     price_min: 0,
     price_max: 0,
     availability_status: "available",
+    image_urls_raw: "",
+    features_raw: "",
   });
   const [mine, setMine] = React.useState([]);
 
@@ -423,14 +439,35 @@ const AvailabilityPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const image_urls = form.image_urls_raw
+      ? form.image_urls_raw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
+    const features = form.features_raw
+      ? form.features_raw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
     await axios.post("/listings", {
-      ...form,
+      region: form.region,
+      micro_location: form.micro_location,
+      concept: form.concept,
+      capacity_label: form.capacity_label,
       pax: Number(form.pax),
+      date_start: new Date(form.date_start).toISOString(),
+      date_end: new Date(form.date_end).toISOString(),
       nights: Number(form.nights),
       price_min: Number(form.price_min),
       price_max: Number(form.price_max),
-      date_start: new Date(form.date_start).toISOString(),
-      date_end: new Date(form.date_end).toISOString(),
+      availability_status: form.availability_status,
+      image_urls,
+      features,
     });
     await loadMine();
   };
@@ -498,6 +535,26 @@ const AvailabilityPage = () => {
             <input name="price_max" type="number" value={form.price_max} onChange={onChange} />
           </label>
         </div>
+        <div className="grid-2">
+          <label className="field">
+            <span>Resim URL'leri (virgülle ayır)</span>
+            <textarea
+              name="image_urls_raw"
+              value={form.image_urls_raw}
+              onChange={onChange}
+              placeholder="https://...1.jpg, https://...2.jpg"
+            />
+          </label>
+          <label className="field">
+            <span>Özellikler / İmkanlar (virgülle ayır)</span>
+            <textarea
+              name="features_raw"
+              value={form.features_raw}
+              onChange={onChange}
+              placeholder="Şömine, Göl manzarası, Jakuzili"
+            />
+          </label>
+        </div>
         <button className="btn-primary" type="submit" data-testid="availability-submit">
           Kapasite Yayınla
         </button>
@@ -507,6 +564,11 @@ const AvailabilityPage = () => {
       <div className="cards-grid">
         {mine.map((l) => (
           <div key={l.id} className="listing-card">
+            {l.image_urls && l.image_urls.length > 0 && (
+              <div className="listing-image-wrapper">
+                <img src={l.image_urls[0]} alt="Kapasite görseli" className="listing-image" />
+              </div>
+            )}
             <div className="listing-header">
               <span className="badge-region">{l.region} / {l.micro_location}</span>
               <span className={`status-chip status-${l.availability_status}`}>
@@ -516,6 +578,15 @@ const AvailabilityPage = () => {
             <div className="listing-body">
               <div>Konsept: {l.concept}</div>
               <div>Kapasite: {l.capacity_label} ({l.pax} kişi)</div>
+              {l.features && l.features.length > 0 && (
+                <div className="listing-features">
+                  {l.features.slice(0, 4).map((f) => (
+                    <span key={f} className="feature-badge">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
