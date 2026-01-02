@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, Link } from "react-router-dom";
 import axios from "axios";
 import "@/App.css";
 
@@ -254,10 +254,11 @@ const Layout = ({ children }) => {
       </header>
       <div className="shell-main">
         <nav className="shell-nav">
-          <a href="/dashboard" data-testid="nav-dashboard">Panel</a>
-          <a href="/listings" data-testid="nav-listings">Anonim Kapasiteler</a>
-          <a href="/availability" data-testid="nav-availability">Kendi Kapasitem</a>
-          <a href="/requests" data-testid="nav-requests">Talepler</a>
+          <Link to="/dashboard" data-testid="nav-dashboard">Panel</Link>
+          <Link to="/listings" data-testid="nav-listings">Anonim Kapasiteler</Link>
+          <Link to="/availability" data-testid="nav-availability">Kendi Kapasitem</Link>
+          <Link to="/requests" data-testid="nav-requests">Talepler</Link>
+          <Link to="/matches" data-testid="nav-matches">Eşleşmeler</Link>
         </nav>
         <main className="shell-content">{children}</main>
       </div>
@@ -276,13 +277,31 @@ const DashboardPage = () => {
           axios.get("/requests/incoming"),
           axios.get("/matches"),
         ]);
+
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        let monthlyMatchCount = 0;
+        let monthlyFeeTotal = 0;
+
+        matchesRes.data.forEach((m) => {
+          if (!m.accepted_at) return;
+          const d = new Date(m.accepted_at);
+          if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+            monthlyMatchCount += 1;
+            monthlyFeeTotal += m.fee_amount || 0;
+          }
+        });
+
         setStats({
           outgoing: outRes.data.length,
           incoming: inRes.data.length,
           matches: matchesRes.data.length,
+          monthlyMatchCount,
+          monthlyFeeTotal,
         });
       } catch {
-        setStats({ outgoing: 0, incoming: 0, matches: 0 });
+        setStats({ outgoing: 0, incoming: 0, matches: 0, monthlyMatchCount: 0, monthlyFeeTotal: 0 });
       }
     };
     load();
@@ -303,6 +322,12 @@ const DashboardPage = () => {
         <div className="kpi-card" data-testid="kpi-matches">
           <span>Onaylanmış Eşleşmeler</span>
           <strong>{stats?.matches ?? "-"}</strong>
+        </div>
+        <div className="kpi-card" data-testid="kpi-monthly-fee">
+          <span>Bu Ayki Eşleşmeler / Hizmet Bedeli</span>
+          <strong>
+            {stats ? `${stats.monthlyMatchCount} eşleşme / ${stats.monthlyFeeTotal} TL` : "-"}
+          </strong>
         </div>
       </div>
     </Layout>
@@ -607,6 +632,129 @@ const RequestsPage = () => {
   );
 };
 
+const MatchesPage = () => {
+  const [matches, setMatches] = React.useState([]);
+
+  React.useEffect(() => {
+    const load = async () => {
+      const res = await axios.get("/matches");
+      setMatches(res.data);
+    };
+    load();
+  }, []);
+
+  return (
+    <Layout>
+      <h1 className="page-title">Eşleşmeler</h1>
+      <table className="requests-table" data-testid="matches-table">
+        <thead>
+          <tr>
+            <th>Referans</th>
+            <th>Kabul Tarihi</th>
+            <th>Hizmet Bedeli</th>
+            <th>Durum</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {matches.map((m) => (
+            <tr key={m.id}>
+              <td>{m.reference_code}</td>
+              <td>{m.accepted_at ? new Date(m.accepted_at).toLocaleString() : "-"}</td>
+              <td>{m.fee_amount} TL</td>
+              <td>{m.fee_status}</td>
+              <td>
+                <Link to={`/matches/${m.id}`} data-testid="match-detail-link">
+                  Detay
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Layout>
+  );
+};
+
+const MatchDetailPage = () => {
+  const { id } = useParams();
+  const [data, setData] = React.useState(null);
+  const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await axios.get(`/matches/${id}`);
+        setData(res.data);
+      } catch (e) {
+        setError("Bu eşleşme görüntülenemiyor veya yetkiniz yok.");
+      }
+    };
+    load();
+  }, [id]);
+
+  if (error) {
+    return (
+      <Layout>
+        <h1 className="page-title">Eşleşme Detayı</h1>
+        <div className="error" data-testid="match-error">{error}</div>
+      </Layout>
+    );
+  }
+
+  if (!data) {
+    return (
+      <Layout>
+        <h1 className="page-title">Eşleşme Detayı</h1>
+        <div>Yükleniyor...</div>
+      </Layout>
+    );
+  }
+
+  const { reference_code, fee_amount, fee_status, accepted_at, counterparty } = data;
+  const self = counterparty?.self || {};
+  const other = counterparty?.other || {};
+
+  return (
+    <Layout>
+      <h1 className="page-title">Eşleşme Detayı</h1>
+      <div className="cards-row">
+        <div className="kpi-card" data-testid="match-reference">
+          <span>Referans Kodu</span>
+          <strong>{reference_code}</strong>
+        </div>
+        <div className="kpi-card">
+          <span>Kabul Tarihi</span>
+          <strong>{accepted_at ? new Date(accepted_at).toLocaleString() : "-"}</strong>
+        </div>
+        <div className="kpi-card" data-testid="match-fee">
+          <span>Bu Eşleşme İçin Hizmet Bedeli</span>
+          <strong>{fee_amount} TL ({fee_status})</strong>
+        </div>
+      </div>
+
+      <h2 className="section-title">Karşı Otel Bilgileri</h2>
+      <div className="listing-card" data-testid="match-counterparty">
+        <div className="listing-body">
+          <div><strong>Ad:</strong> {other.name}</div>
+          <div><strong>Bölge:</strong> {other.region} / {other.micro_location}</div>
+          <div><strong>Konsept:</strong> {other.concept}</div>
+          <div><strong>Adres:</strong> {other.address}</div>
+          <div><strong>Telefon:</strong> {other.phone}</div>
+          <div><strong>WhatsApp:</strong> {other.whatsapp}</div>
+          <div><strong>Web Sitesi:</strong> {other.website}</div>
+          <div><strong>İrtibat Kişisi:</strong> {other.contact_person}</div>
+        </div>
+      </div>
+
+      <p className="section-note" data-testid="match-note">
+        Bu eşleşme, otel → otel kapasite paylaşımı için oluşturulmuştur. Son kullanıcıya satış yapılmaz;
+        platform yalnızca B2B eşleşme ve talep yönetimi sağlar.
+      </p>
+    </Layout>
+  );
+};
+
 const App = () => {
   return (
     <AuthProvider>
@@ -643,6 +791,22 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <RequestsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/matches"
+            element={
+              <ProtectedRoute>
+                <MatchesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/matches/:id"
+            element={
+              <ProtectedRoute>
+                <MatchDetailPage />
               </ProtectedRoute>
             }
           />
