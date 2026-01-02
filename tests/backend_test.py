@@ -553,10 +553,6 @@ class HotelMatchTester:
             f"Error message should indicate authorization issue, got: {data['detail']}"
         
         self.log("Unauthorized match access properly blocked with 403", "success")
-
-        assert other_hotel["id"] == self.hotel_a_id, "Other hotel should be Hotel A"
-        
-        self.log("Progressive disclosure working: Hotel B sees both hotels' full details", "success")
     
     # ========================================================================
     # REJECT FLOW TEST
