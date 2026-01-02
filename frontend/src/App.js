@@ -537,7 +537,7 @@ const AvailabilityPage = () => {
         </div>
         <div className="grid-2">
           <label className="field">
-            <span>Resim URL'leri (virgülle ayır)</span>
+            <span>Resim URL&apos;leri (virgülle ayır)</span>
             <textarea
               name="image_urls_raw"
               value={form.image_urls_raw}
