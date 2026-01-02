@@ -686,6 +686,7 @@ class HotelMatchTester:
         self.run_test("Get matches (Hotel B)", self.test_get_matches_hotel_b)
         self.run_test("Progressive disclosure for Hotel A", self.test_progressive_disclosure_hotel_a)
         self.run_test("Progressive disclosure for Hotel B", self.test_progressive_disclosure_hotel_b)
+        self.run_test("Unauthorized match access (Hotel C)", self.test_unauthorized_match_access)
         
         # Additional flows
         self.run_test("Test reject flow", self.test_reject_flow)
