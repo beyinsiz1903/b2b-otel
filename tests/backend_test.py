@@ -797,6 +797,12 @@ class HotelMatchTester:
         self.run_test("Create availability listing (Hotel A)", self.test_create_listing_hotel_a)
         self.run_test("Get anonymous listings", self.test_get_listings_anonymous)
         
+        # Phase 3.2: Image URLs and Features tests
+        self.run_test("Create listing with images and features", self.test_create_listing_with_images_and_features)
+        self.run_test("Create listing without images/features (robustness)", self.test_create_listing_without_images_and_features)
+        self.run_test("Get listings with media fields in anonymous feed", self.test_get_listings_with_media_fields)
+        self.run_test("Get my listings with media fields (mine=true)", self.test_get_my_listings_with_media_fields)
+        
         # Request tests
         self.run_test("Create request (Hotel B → Hotel A)", self.test_create_request_hotel_b)
         self.run_test("Verify listing locked after request", self.test_listing_locked_after_request)
