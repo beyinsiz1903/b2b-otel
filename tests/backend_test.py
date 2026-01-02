@@ -149,12 +149,9 @@ class HotelMatchTester:
     
     def test_login_hotel_a(self):
         """Test login for Hotel A"""
-        timestamp = datetime.now().strftime("%H%M%S")
-        email = f"hotela_{timestamp}@test.com"
-        
         # OAuth2 form data
         form_data = {
-            "username": email,
+            "username": self.hotel_a_email,
             "password": "TestPass123!"
         }
         
