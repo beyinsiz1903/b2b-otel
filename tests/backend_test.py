@@ -122,7 +122,8 @@ class HotelMatchTester:
     
     def test_register_hotel_b(self):
         """Test hotel registration for Hotel B"""
-        timestamp = datetime.now().strftime("%H%M%S")
+        timestamp = datetime.now().strftime("%H%M%S%f")
+        self.hotel_b_email = f"hotelb_{timestamp}@test.com"
         payload = {
             "name": f"Test Hotel B {timestamp}",
             "region": "Kartepe",
@@ -133,7 +134,7 @@ class HotelMatchTester:
             "whatsapp": "+90 555 222 2222",
             "website": "https://hotelb.example.com",
             "contact_person": "Manager B",
-            "email": f"hotelb_{timestamp}@test.com",
+            "email": self.hotel_b_email,
             "password": "TestPass123!"
         }
         
@@ -144,7 +145,7 @@ class HotelMatchTester:
         self.assert_field(data, "id", "Hotel B ID not returned")
         
         self.hotel_b_id = data["id"]
-        self.log(f"Hotel B registered with ID: {self.hotel_b_id[:8]}...", "success")
+        self.log(f"Hotel B registered with ID: {self.hotel_b_id[:8]}... and email: {self.hotel_b_email}", "success")
     
     def test_login_hotel_a(self):
         """Test login for Hotel A"""
