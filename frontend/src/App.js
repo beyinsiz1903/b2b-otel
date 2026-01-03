@@ -1114,8 +1114,8 @@ const ListingDetailPage = () => {
   );
 
   if (isMobile) {
-    return (
-      <Wrapper>
+    return renderWrapper(
+      <>
         {content}
         <div className="detail-sticky-cta">
           <button
@@ -1126,11 +1126,11 @@ const ListingDetailPage = () => {
             {listing.is_locked ? "Şu an kilitli" : submitting ? "Gönderiliyor..." : "Talep Gönder"}
           </button>
         </div>
-      </Wrapper>
+      </>
     );
   }
 
-  return <Wrapper>{content}</Wrapper>;
+  return renderWrapper(content);
 };
 
 const App = () => {
