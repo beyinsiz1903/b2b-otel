@@ -376,7 +376,7 @@ const ListingsPage = () => {
                 Tarih: {new Date(l.date_start).toLocaleDateString()} - {" "}
                 {new Date(l.date_end).toLocaleDateString()} ({l.nights} gece)
               </div>
-              <div>Fiyat Aralığı: {l.price_min} - {l.price_max} TL</div>
+              <div>Fiyat: {l.price_min} TL</div>
               {l.features && l.features.length > 0 && (
                 <div className="listing-features">
                   {l.features.slice(0, 4).map((f) => (
@@ -445,6 +445,8 @@ const AvailabilityPage = () => {
           .filter(Boolean)
       : [];
 
+    const price = Number(form.price_min);
+
     await axios.post("/listings", {
       region: form.region,
       micro_location: form.micro_location,
@@ -454,8 +456,8 @@ const AvailabilityPage = () => {
       date_start: new Date(form.date_start).toISOString(),
       date_end: new Date(form.date_end).toISOString(),
       nights: Number(form.nights),
-      price_min: Number(form.price_min),
-      price_max: Number(form.price_max),
+      price_min: price,
+      price_max: price,
       availability_status: form.availability_status,
       image_urls,
       features,
@@ -532,14 +534,10 @@ const AvailabilityPage = () => {
         </div>
         <div className="grid-2">
           <label className="field">
-            <span>Fiyat Min</span>
+            <span>Fiyat (gecelik)</span>
             <input name="price_min" type="number" value={form.price_min} onChange={onChange} />
-          </label>
-          <label className="field">
-            <span>Fiyat Max</span>
-            <input name="price_max" type="number" value={form.price_max} onChange={onChange} />
             <span className="field-help">
-              Fiyatı aralık olarak girin (örn. 7500–8500). Çok geniş aralık talebi düşürür; 500–1000 TL bandı ideal.
+              Fiyatı net olarak girin (örn. 8000). Bu değer diğer otellere tek rakam olarak gösterilir.
             </span>
           </label>
         </div>
