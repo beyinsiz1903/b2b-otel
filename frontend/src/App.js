@@ -475,6 +475,11 @@ const AvailabilityPage = () => {
   return (
     <Layout>
       <h1 className="page-title">Kendi Kapasitelerim</h1>
+      <div className="info-banner">
+        <strong>🔒 Anonim ilan</strong>
+        Bu ilanlar anonim görünür. Otel adı/iletişim bilgisi <strong>eşleşme olmadan açılmaz</strong>.
+        Lütfen görsellerde isim/logo kullanmayın.
+      </div>
       <form className="availability-form" onSubmit={handleSubmit} data-testid="availability-form">
         <div className="grid-3">
           <label className="field">
