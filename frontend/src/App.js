@@ -496,6 +496,9 @@ const AvailabilityPage = () => {
           <label className="field">
             <span>Konsept</span>
             <input name="concept" value={form.concept} onChange={onChange} required />
+            <span className="field-help">
+              Misafirin beklentisini belirler. Örn: Bungalov, Butik, Dağ evi, Resort.
+            </span>
           </label>
         </div>
         <div className="grid-3">
