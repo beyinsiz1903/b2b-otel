@@ -1132,6 +1132,7 @@ const ListingDetailPage = () => {
       <>
         {content}
         <div className="detail-sticky-cta">
+          <div className="detail-sticky-label">📝 Talep Bilgisi</div>
           <button
             className="btn-primary w-full"
             onClick={handleSubmit}
