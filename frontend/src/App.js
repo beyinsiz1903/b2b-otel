@@ -557,8 +557,9 @@ const AvailabilityPage = () => {
         <div className="field-help">Hızlı ekle:</div>
         <div>
           {[
-            "Şömine",
             "Jakuzili",
+            "Şömine",
+            "Isıtmalı şömine / soba",
             "Göl manzarası",
             "Dağ manzarası",
             "Özel bahçe",
@@ -568,7 +569,6 @@ const AvailabilityPage = () => {
             "Barbekü alanı",
             "Evcil hayvan uygun",
             "Otopark",
-            "Isıtmalı şömine / soba",
           ].map((chip) => (
             <button
               key={chip}
