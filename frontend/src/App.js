@@ -530,6 +530,9 @@ const AvailabilityPage = () => {
           <label className="field">
             <span>Bitiş Tarihi</span>
             <input name="date_end" type="date" value={form.date_end} onChange={onChange} required />
+            <span className="field-help">
+              Mümkünse net tarih girin. ‘Alternatif’ durumlarda karşı teklif akışıyla farklı tarih sunabilirsiniz.
+            </span>
           </label>
           <label className="field">
             <span>Gece Sayısı</span>
