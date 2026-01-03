@@ -1,6 +1,6 @@
 [
   {
-    "content": "Phase 3.2: E2E test image/feature flow (create listing with metadata and verify display)",
-    "status": "completed"
+    "content": "Phase 2.X: Implement /listings/:id anonymous detail view with modal/page behavior and request flow",
+    "status": "in_progress"
   }
 ]
