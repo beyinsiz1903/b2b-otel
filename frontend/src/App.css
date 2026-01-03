@@ -341,6 +341,53 @@ body {
 
 .feature-chip:hover {
   background: #eef2f4;
+.listing-card-clickable {
+  cursor: pointer;
+}
+
+.btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: #e5e7eb;
+}
+
+.detail-header-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.detail-sticky-cta {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.95);
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.detail-sticky-label {
+  font-size: 0.8rem;
+  color: #6b7c93;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 }
 
 
