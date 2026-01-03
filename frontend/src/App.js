@@ -554,6 +554,44 @@ const AvailabilityPage = () => {
         </div>
         <div className="grid-2">
           <label className="field">
+        <div className="field-help">Hızlı ekle:</div>
+        <div>
+          {[
+            "Şömine",
+            "Jakuzili",
+            "Göl manzarası",
+            "Dağ manzarası",
+            "Özel bahçe",
+            "Havuz",
+            "Isıtmalı havuz",
+            "Kahvaltı dahil",
+            "Barbekü alanı",
+            "Evcil hayvan uygun",
+            "Otopark",
+            "Isıtmalı şömine / soba",
+          ].map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              className="feature-chip"
+              onClick={() => {
+                const current = form.features_raw
+                  ? form.features_raw
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                  : [];
+                if (!current.includes(chip)) {
+                  const next = [...current, chip];
+                  setForm({ ...form, features_raw: next.join(", ") });
+                }
+              }}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+
             <span>Resim URL&apos;leri (virgülle ayır)</span>
             <textarea
               name="image_urls_raw"
