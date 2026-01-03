@@ -509,6 +509,9 @@ const AvailabilityPage = () => {
           <label className="field">
             <span>Kişi Sayısı</span>
             <input name="pax" type="number" value={form.pax} onChange={onChange} />
+            <span className="field-help">
+              Pax misafirin sayısıdır. Kartlar bu bilgiye göre filtrelenir; yanlış girilirse talep kaçırırsınız.
+            </span>
           </label>
           <label className="field">
             <span>Durum</span>
