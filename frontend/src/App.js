@@ -994,21 +994,17 @@ const ListingDetailPage = () => {
   );
 
   if (loading) {
-    return (
-      <Wrapper>
-        <div>Yükleniyor...</div>
-      </Wrapper>
-    );
+    return renderWrapper(<div>Yükleniyor...</div>);
   }
 
   if (error) {
-    return (
-      <Wrapper>
+    return renderWrapper(
+      <>
         <div className="error">{error}</div>
         <button className="btn-primary mt-2" onClick={handleBack}>
           Listeye dön
         </button>
-      </Wrapper>
+      </>
     );
   }
 
