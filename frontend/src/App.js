@@ -547,6 +547,9 @@ const AvailabilityPage = () => {
           <label className="field">
             <span>Fiyat Max</span>
             <input name="price_max" type="number" value={form.price_max} onChange={onChange} />
+            <span className="field-help">
+              Fiyatı aralık olarak girin (örn. 7500–8500). Çok geniş aralık talebi düşürür; 500–1000 TL bandı ideal.
+            </span>
           </label>
         </div>
         <div className="grid-2">
