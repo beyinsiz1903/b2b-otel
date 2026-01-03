@@ -376,7 +376,7 @@ const ListingsPage = () => {
                 Tarih: {new Date(l.date_start).toLocaleDateString()} - {" "}
                 {new Date(l.date_end).toLocaleDateString()} ({l.nights} gece)
               </div>
-              <div>Fiyat: {l.price_min} TL</div>
+              <div>Fiyat: {l.price_min} TL / gece</div>
               {l.features && l.features.length > 0 && (
                 <div className="listing-features">
                   {l.features.slice(0, 4).map((f) => (
@@ -1055,7 +1055,7 @@ const ListingDetailPage = () => {
           <div>
             <div className="detail-status">Durum: {listing.availability_status}</div>
             <div className="detail-price">
-              Fiyat: {listing.price_min} TL
+              Fiyat: {listing.price_min} TL / gece
             </div>
             {/* Referral rate indicator would go here if available in listing */}
           </div>
