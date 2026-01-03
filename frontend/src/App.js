@@ -602,6 +602,9 @@ const AvailabilityPage = () => {
             <span className="field-help">
               Oda/tesis görsellerinin linklerini virgülle ayırarak girin. Otel adı, logo, telefon, Instagram gibi kimlik bilgisi görünen görselleri kullanmayın.
             </span>
+            <span className="field-help">
+              ⚠️ Logo/tabela görünen görseller eşleşme sonrası gizlense bile talep düşürür.
+            </span>
           </label>
           <label className="field">
             <span>Özellikler / İmkanlar (virgülle ayır)</span>
