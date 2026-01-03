@@ -1055,7 +1055,7 @@ const ListingDetailPage = () => {
           <div>
             <div className="detail-status">Durum: {listing.availability_status}</div>
             <div className="detail-price">
-              Fiyat Aralığı: {listing.price_min} - {listing.price_max} TL
+              Fiyat: {listing.price_min} TL
             </div>
             {/* Referral rate indicator would go here if available in listing */}
           </div>
