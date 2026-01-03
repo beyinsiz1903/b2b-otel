@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, Link, useLocation } from "react-router-dom";
 import axios from "axios";
 import "@/App.css";
 
@@ -336,6 +336,7 @@ const DashboardPage = () => {
 
 const ListingsPage = () => {
   const [listings, setListings] = React.useState([]);
+  const navigate = useNavigate();
 
   const load = async () => {
     const res = await axios.get("/listings");
@@ -346,22 +347,17 @@ const ListingsPage = () => {
     load();
   }, []);
 
-  const sendRequest = async (listingId) => {
-    await axios.post("/requests", {
-      listing_id: listingId,
-      guest_type: "family",
-      notes: "",
-      confirm_window_minutes: 120,
-    });
-    await load();
-  };
-
   return (
     <Layout>
       <h1 className="page-title">Anonim Kapasite Listesi</h1>
       <div className="cards-grid">
         {listings.map((l) => (
-          <div className="listing-card" key={l.id} data-testid="listing-card">
+          <div
+            className="listing-card listing-card-clickable"
+            key={l.id}
+            data-testid="listing-card"
+            onClick={() => navigate(`/listings/${l.id}`)}
+          >
             {l.image_urls && l.image_urls.length > 0 && (
               <div className="listing-image-wrapper">
                 <img src={l.image_urls[0]} alt="Kapasite görseli" className="listing-image" />
@@ -391,14 +387,9 @@ const ListingsPage = () => {
                 </div>
               )}
             </div>
-            <button
-              className="btn-primary w-full mt-2"
-              onClick={() => sendRequest(l.id)}
-              disabled={l.is_locked}
-              data-testid="send-request-button"
-            >
-              {l.is_locked ? "Bu kapasite şu an kilitli" : "Talep Gönder"}
-            </button>
+            {l.is_locked && (
+              <div className="locked-badge">Bu kapasite şu an kilitli</div>
+            )}
           </div>
         ))}
       </div>
@@ -554,44 +545,6 @@ const AvailabilityPage = () => {
         </div>
         <div className="grid-2">
           <label className="field">
-        <div className="field-help">Hızlı ekle:</div>
-        <div>
-          {[
-            "Jakuzili",
-            "Şömine",
-            "Isıtmalı şömine / soba",
-            "Göl manzarası",
-            "Dağ manzarası",
-            "Özel bahçe",
-            "Havuz",
-            "Isıtmalı havuz",
-            "Kahvaltı dahil",
-            "Barbekü alanı",
-            "Evcil hayvan uygun",
-            "Otopark",
-          ].map((chip) => (
-            <button
-              key={chip}
-              type="button"
-              className="feature-chip"
-              onClick={() => {
-                const current = form.features_raw
-                  ? form.features_raw
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean)
-                  : [];
-                if (!current.includes(chip)) {
-                  const next = [...current, chip];
-                  setForm({ ...form, features_raw: next.join(", ") });
-                }
-              }}
-            >
-              {chip}
-            </button>
-          ))}
-        </div>
-
             <span>Resim URL&apos;leri (virgülle ayır)</span>
             <textarea
               name="image_urls_raw"
@@ -617,6 +570,30 @@ const AvailabilityPage = () => {
             <span className="field-help">
               Misafire değer katan özellikleri virgülle ayırarak girin. Örn: Şömine, Jakuzili, Göl manzarası, Özel bahçe, Kahvaltı dahil.
             </span>
+            <div className="field-help">Hızlı ekle:</div>
+            <div>
+              {["Jakuzili","Şömine","Isıtmalı şömine / soba","Göl manzarası","Dağ manzarası","Özel bahçe","Havuz","Isıtmalı havuz","Kahvaltı dahil","Barbekü alanı","Evcil hayvan uygun","Otopark",].map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  className="feature-chip"
+                  onClick={() => {
+                    const current = form.features_raw
+                      ? form.features_raw
+                          .split(",")
+                          .map((s) => s.trim())
+                          .filter(Boolean)
+                      : [];
+                    if (!current.includes(chip)) {
+                      const next = [...current, chip];
+                      setForm({ ...form, features_raw: next.join(", ") });
+                    }
+                  }}
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
           </label>
         </div>
         <button className="btn-primary" type="submit" data-testid="availability-submit">
@@ -813,6 +790,8 @@ const MatchesPage = () => {
 
 const MatchDetailPage = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [data, setData] = React.useState(null);
   const [error, setError] = React.useState("");
 
@@ -828,11 +807,28 @@ const MatchDetailPage = () => {
     load();
   }, [id]);
 
+  const handleBack = () => {
+    if (location.key !== "default") {
+      navigate(-1);
+    } else {
+      navigate("/matches");
+    }
+  };
+
   if (error) {
     return (
       <Layout>
-        <h1 className="page-title">Eşleşme Detayı</h1>
-        <div className="error" data-testid="match-error">{error}</div>
+        <div className="overlay-modal">
+          <div className="modal-panel">
+            <div className="modal-header">
+              <h1 className="page-title">Eşleşme Detayı</h1>
+              <button className="btn-ghost" onClick={handleBack}>
+                ×
+              </button>
+            </div>
+            <div className="error" data-testid="match-error">{error}</div>
+          </div>
+        </div>
       </Layout>
     );
   }
@@ -840,54 +836,305 @@ const MatchDetailPage = () => {
   if (!data) {
     return (
       <Layout>
-        <h1 className="page-title">Eşleşme Detayı</h1>
-        <div>Yükleniyor...</div>
+        <div className="overlay-modal">
+          <div className="modal-panel">
+            <div className="modal-header">
+              <h1 className="page-title">Eşleşme Detayı</h1>
+              <button className="btn-ghost" onClick={handleBack}>
+                ×
+              </button>
+            </div>
+            <div>Yükleniyor...</div>
+          </div>
+        </div>
       </Layout>
     );
   }
 
   const { reference_code, fee_amount, fee_status, accepted_at, counterparty } = data;
-  const self = counterparty?.self || {};
   const other = counterparty?.other || {};
 
   return (
     <Layout>
-      <h1 className="page-title">Eşleşme Detayı</h1>
-      <div className="cards-row">
-        <div className="kpi-card" data-testid="match-reference">
-          <span>Referans Kodu</span>
-          <strong>{reference_code}</strong>
-        </div>
-        <div className="kpi-card">
-          <span>Kabul Tarihi</span>
-          <strong>{accepted_at ? new Date(accepted_at).toLocaleString() : "-"}</strong>
-        </div>
-        <div className="kpi-card" data-testid="match-fee">
-          <span>Bu Eşleşme İçin Hizmet Bedeli</span>
-          <strong>{fee_amount} TL ({fee_status})</strong>
+      <div className="overlay-modal">
+        <div className="modal-panel">
+          <div className="modal-header">
+            <h1 className="page-title">Eşleşme Detayı</h1>
+            <button className="btn-ghost" onClick={handleBack}>
+              ×
+            </button>
+          </div>
+          <div className="cards-row">
+            <div className="kpi-card" data-testid="match-reference">
+              <span>Referans Kodu</span>
+              <strong>{reference_code}</strong>
+            </div>
+            <div className="kpi-card">
+              <span>Kabul Tarihi</span>
+              <strong>{accepted_at ? new Date(accepted_at).toLocaleString() : "-"}</strong>
+            </div>
+            <div className="kpi-card" data-testid="match-fee">
+              <span>Bu Eşleşme İçin Hizmet Bedeli</span>
+              <strong>{fee_amount} TL ({fee_status})</strong>
+            </div>
+          </div>
+
+          <h2 className="section-title">Karşı Otel Bilgileri</h2>
+          <div className="listing-card" data-testid="match-counterparty">
+            <div className="listing-body">
+              <div><strong>Ad:</strong> {other.name}</div>
+              <div><strong>Bölge:</strong> {other.region} / {other.micro_location}</div>
+              <div><strong>Konsept:</strong> {other.concept}</div>
+              <div><strong>Adres:</strong> {other.address}</div>
+              <div><strong>Telefon:</strong> {other.phone}</div>
+              <div><strong>WhatsApp:</strong> {other.whatsapp}</div>
+              <div><strong>Web Sitesi:</strong> {other.website}</div>
+              <div><strong>İrtibat Kişisi:</strong> {other.contact_person}</div>
+            </div>
+          </div>
+
+          <p className="section-note" data-testid="match-note">
+            Bu eşleşme, otel → otel kapasite paylaşımı için oluşturulmuştur. Son kullanıcıya satış yapılmaz;
+            platform yalnızca B2B eşleşme ve talep yönetimi sağlar.
+          </p>
         </div>
       </div>
-
-      <h2 className="section-title">Karşı Otel Bilgileri</h2>
-      <div className="listing-card" data-testid="match-counterparty">
-        <div className="listing-body">
-          <div><strong>Ad:</strong> {other.name}</div>
-          <div><strong>Bölge:</strong> {other.region} / {other.micro_location}</div>
-          <div><strong>Konsept:</strong> {other.concept}</div>
-          <div><strong>Adres:</strong> {other.address}</div>
-          <div><strong>Telefon:</strong> {other.phone}</div>
-          <div><strong>WhatsApp:</strong> {other.whatsapp}</div>
-          <div><strong>Web Sitesi:</strong> {other.website}</div>
-          <div><strong>İrtibat Kişisi:</strong> {other.contact_person}</div>
-        </div>
-      </div>
-
-      <p className="section-note" data-testid="match-note">
-        Bu eşleşme, otel → otel kapasite paylaşımı için oluşturulmuştur. Son kullanıcıya satış yapılmaz;
-        platform yalnızca B2B eşleşme ve talep yönetimi sağlar.
-      </p>
     </Layout>
   );
+};
+
+const ListingDetailPage = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [listing, setListing] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
+  const [guestType, setGuestType] = React.useState("family");
+  const [notes, setNotes] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+  const [successMsg, setSuccessMsg] = React.useState("");
+
+  React.useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await axios.get(`/listings/${id}`);
+        setListing(res.data);
+      } catch (e) {
+        if (e.response && e.response.status === 404) {
+          setError("Bu kapasite artık bulunmuyor.");
+        } else {
+          setError("Detay yüklenemedi.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [id]);
+
+  const handleBack = () => {
+    if (location.key !== "default") {
+      navigate(-1);
+    } else {
+      navigate("/listings");
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!listing || listing.is_locked) return;
+    try {
+      setSubmitting(true);
+      setSuccessMsg("");
+      await axios.post("/requests", {
+        listing_id: listing.id,
+        guest_type: guestType,
+        notes,
+        confirm_window_minutes: 120,
+      });
+      setSuccessMsg("Talep gönderildi. 120 dk içinde yanıt bekleniyor.");
+    } catch (err) {
+      setError("Talep gönderilirken hata oluştu.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const isMobile = window.innerWidth < 768;
+
+  const Wrapper = ({ children }) => (
+    <Layout>
+      {isMobile ? (
+        <div className="detail-fullscreen">
+          <header className="detail-header">
+            <button className="btn-ghost" onClick={handleBack}>
+              ←
+            </button>
+            <span>Anonim Kapasite</span>
+          </header>
+          <div className="detail-body">{children}</div>
+        </div>
+      ) : (
+        <div className="overlay-modal">
+          <div className="modal-panel">
+            <div className="modal-header">
+              <h1 className="page-title">Anonim Kapasite Detayı</h1>
+              <button className="btn-ghost" onClick={handleBack}>
+                ×
+              </button>
+            </div>
+            <div className="modal-body">{children}</div>
+          </div>
+        </div>
+      )}
+    </Layout>
+  );
+
+  if (loading) {
+    return (
+      <Wrapper>
+        <div>Yükleniyor...</div>
+      </Wrapper>
+    );
+  }
+
+  if (error) {
+    return (
+      <Wrapper>
+        <div className="error">{error}</div>
+        <button className="btn-primary mt-2" onClick={handleBack}>
+          Listeye dön
+        </button>
+      </Wrapper>
+    );
+  }
+
+  if (!listing) return null;
+
+  const start = new Date(listing.date_start);
+  const end = new Date(listing.date_end);
+
+  const content = (
+    <>
+      <div className="detail-header-main">
+        <div>
+          <div className="detail-title-main">{listing.concept}</div>
+          <div className="detail-subtitle">
+            {listing.region} / {listing.micro_location}
+          </div>
+          <div className="detail-meta-row">
+            <span>
+              Tarih: {start.toLocaleDateString()} - {end.toLocaleDateString()} ({listing.nights} gece)
+            </span>
+            <span>
+              Kapasite: {listing.capacity_label} / {listing.pax} pax
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="detail-layout">
+        <div className="detail-media">
+          {listing.image_urls && listing.image_urls.length > 0 ? (
+            <div className="detail-gallery">
+              <div className="detail-gallery-main">
+                <img src={listing.image_urls[0]} alt="Kapasite görseli" />
+              </div>
+              <div className="detail-gallery-thumbs">
+                {listing.image_urls.slice(0, 4).map((url) => (
+                  <img key={url} src={url} alt="Kapasite thumb" />
+                ))}
+                {listing.image_urls.length > 4 && (
+                  <div className="detail-gallery-more">+{listing.image_urls.length - 4}</div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="detail-gallery placeholder">Görsel eklenmedi</div>
+          )}
+        </div>
+
+        <aside className="detail-meta-card">
+          <div>
+            <div className="detail-status">Durum: {listing.availability_status}</div>
+            <div className="detail-price">
+              Fiyat Aralığı: {listing.price_min} - {listing.price_max} TL
+            </div>
+            {/* Referral rate indicator would go here if available in listing */}
+          </div>
+          {listing.is_locked && (
+            <div className="detail-locked">Bu kapasite şu an kilitli. Bu kapasiteye başka bir talep açık.</div>
+          )}
+        </aside>
+      </div>
+
+      {listing.features && listing.features.length > 0 && (
+        <section className="detail-section">
+          <h2>Özellikler</h2>
+          <div className="listing-features">
+            {listing.features.map((f) => (
+              <span key={f} className="feature-badge">
+                {f}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="detail-section">
+        <h2>Talep Bilgisi</h2>
+        {successMsg && <div className="success mt-1">{successMsg}</div>}
+        <form onSubmit={handleSubmit} className="detail-request-form">
+          <label className="field">
+            <span>Misafir Tipi</span>
+            <select value={guestType} onChange={(e) => setGuestType(e.target.value)}>
+              <option value="family">Aile</option>
+              <option value="couple">Çift</option>
+              <option value="group">Grup</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Not (opsiyonel)</span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Kısa not ekleyebilirsiniz"
+            />
+          </label>
+          <div className="field-help">Onay süresi: 120 dk</div>
+          <button
+            className="btn-primary mt-2"
+            type="submit"
+            disabled={listing.is_locked || submitting}
+          >
+            {listing.is_locked ? "Şu an kilitli" : submitting ? "Gönderiliyor..." : "Talep Gönder"}
+          </button>
+        </form>
+      </section>
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <Wrapper>
+        {content}
+        <div className="detail-sticky-cta">
+          <button
+            className="btn-primary w-full"
+            onClick={handleSubmit}
+            disabled={listing.is_locked || submitting}
+          >
+            {listing.is_locked ? "Şu an kilitli" : submitting ? "Gönderiliyor..." : "Talep Gönder"}
+          </button>
+        </div>
+      </Wrapper>
+    );
+  }
+
+  return <Wrapper>{content}</Wrapper>;
 };
 
 const App = () => {
@@ -910,6 +1157,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <ListingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/listings/:id"
+            element={
+              <ProtectedRoute>
+                <ListingDetailPage />
               </ProtectedRoute>
             }
           />
