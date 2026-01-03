@@ -561,6 +561,9 @@ const AvailabilityPage = () => {
               onChange={onChange}
               placeholder="https://...1.jpg, https://...2.jpg"
             />
+            <span className="field-help">
+              Oda/tesis görsellerinin linklerini virgülle ayırarak girin. Otel adı, logo, telefon, Instagram gibi kimlik bilgisi görünen görselleri kullanmayın.
+            </span>
           </label>
           <label className="field">
             <span>Özellikler / İmkanlar (virgülle ayır)</span>
@@ -570,6 +573,9 @@ const AvailabilityPage = () => {
               onChange={onChange}
               placeholder="Şömine, Göl manzarası, Jakuzili"
             />
+            <span className="field-help">
+              Misafire değer katan özellikleri virgülle ayırarak girin. Örn: Şömine, Jakuzili, Göl manzarası, Özel bahçe, Kahvaltı dahil.
+            </span>
           </label>
         </div>
         <button className="btn-primary" type="submit" data-testid="availability-submit">
