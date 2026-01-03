@@ -965,7 +965,7 @@ const ListingDetailPage = () => {
 
   const isMobile = window.innerWidth < 768;
 
-  const Wrapper = ({ children }) => (
+  const renderWrapper = (children) => (
     <Layout>
       {isMobile ? (
         <div className="detail-fullscreen">
