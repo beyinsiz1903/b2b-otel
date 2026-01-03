@@ -1028,6 +1028,22 @@ const ListingDetailPage = () => {
             </span>
           </div>
         </div>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => {
+            const el = document.querySelector(".detail-request-form");
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth" });
+              const select = el.querySelector("select");
+              if (select) {
+                select.focus();
+              }
+            }
+          }}
+        >
+          Talep Oluştur
+        </button>
       </div>
 
       <div className="detail-layout">
