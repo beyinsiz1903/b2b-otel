@@ -2571,15 +2571,24 @@ const GoogleSheetsTab = () => {
             {" "}→ Yeni Proje oluşturun → <strong>Google Sheets API</strong>'yi etkinleştirin
           </li>
           <li>
-            <strong>APIs & Services → Credentials → OAuth 2.0 Client ID</strong> (Web Application tipinde) oluşturun.
+            <strong>APIs &amp; Services → Credentials → OAuth 2.0 Client ID</strong> (Web Application tipinde) oluşturun.
             <br />
-            <strong>Authorized redirect URI</strong> olarak şunu ekleyin:
-            <div style={{ background: "#fff", border: "1px solid #bae6fd", borderRadius: "0.4rem", padding: "0.4rem 0.65rem", marginTop: "0.3rem", fontFamily: "monospace", fontSize: "0.8rem", wordBreak: "break-all", userSelect: "all" }}>
+            <strong>Authorized redirect URI</strong> olarak aşağıdaki adresi ekleyin:
+            <div style={{ background: "#fff", border: "1px solid #bae6fd", borderRadius: "0.4rem", padding: "0.4rem 0.65rem", marginTop: "0.3rem", fontFamily: "monospace", fontSize: "0.8rem", wordBreak: "break-all", userSelect: "all", cursor: "copy" }}
+              title="Kopyalamak için tıklayın"
+              onClick={() => { navigator.clipboard.writeText(REDIRECT_URI); }}
+            >
               {REDIRECT_URI}
+            </div>
+            <div style={{ fontSize: "0.75rem", color: "#6b7c93", marginTop: "0.25rem" }}>
+              📋 Yukarıdaki kutuya tıklayarak kopyalayabilirsiniz. Bu adres Google Console'a <strong>tam olarak</strong> girilmelidir.
             </div>
           </li>
           <li>Oluşturulan <strong>Client ID</strong> ve <strong>Client Secret</strong>'ı aşağıya girin → <strong>Kaydet</strong> → <strong>Google ile Bağlan</strong></li>
         </ol>
+        <div style={{ marginTop: "0.75rem", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "0.5rem", padding: "0.6rem 0.85rem", fontSize: "0.8rem", color: "#713f12" }}>
+          ⚠️ <strong>Erişim engellendi / invalid_client hatası alıyorsanız:</strong> Google Console'da Authorized redirect URI'nin yukarıdaki adresle <strong>birebir aynı</strong> olduğunu kontrol edin. Tek karakter farkı bile hata verir.
+        </div>
       </div>
 
       {/* Bağlantı durumu */}
