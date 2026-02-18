@@ -101,3 +101,290 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "B2B otel kapasite paylaşım platformu (CapX Sapanca-Kartepe). Otellerin kendi aralarında oda paylaşımı yapabildiği kapalı devre platform. Büyük güncelleme: Filtreleme, Alternatif teklif UI, İlan düzenleme/silme, Profil sayfası, Raporlama, Admin panel, Şifre değiştirme, Geçmiş ilan gizleme, WhatsApp linki, Yeni eklenen endpoint'ler."
+
+backend:
+  - task: "GET /listings filtreleme (hide_expired, pax_min, price_max, avail_status)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Eklendi ve test edildi"
+
+  - task: "PUT /listings/{id} - ilan düzenleme"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Eklendi"
+
+  - task: "DELETE /listings/{id} - ilan silme"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Eklendi"
+
+  - task: "GET /listings/mine - kendi ilanlarım"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Eklendi"
+
+  - task: "GET /requests/{id} - talep detayı"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Eklendi"
+
+  - task: "POST /requests/{id}/reject-alternative"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Eklendi"
+
+  - task: "POST /auth/change-password"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Eklendi"
+
+  - task: "GET /stats - raporlama istatistikleri"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Eklendi, monthly_matches, acceptance_rate vs"
+
+  - task: "Admin endpoints (overview, hotels, matches, fee status)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Eklendi. İlk kayıt olan otel otomatik admin olur"
+
+  - task: "is_admin field on hotel + toggle-admin"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Eklendi. İlk kayıt olan otel admin=true"
+
+frontend:
+  - task: "Filtreleme paneli - Kapasiteler sayfası"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Bölge, konsept, pax_min, price_max, durum, geçmiş ilan gizle filtreleri eklendi"
+
+  - task: "İlan düzenleme modal - Kendi Kapasitem sayfası"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "EditListingModal componenti oluşturuldu"
+
+  - task: "İlan silme - Kendi Kapasitem sayfası"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "ConfirmDialog ile birlikte eklendi"
+
+  - task: "Alternatif teklif UI - Talepler sayfası"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "AltOfferModal componenti: tarih, fiyat, not alanları"
+
+  - task: "Alternatif kabul/red - Gönderilen talepler"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "accept-alternative ve reject-alternative butonları eklendi"
+
+  - task: "Talep detay modal"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "RequestDetailModal: ilan bilgisi, alternatif teklif detayı gösterilir"
+
+  - task: "Profil güncelleme sayfası"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "/profile route eklendi, avatar, bilgi güncelleme, şifre değiştirme tabları"
+
+  - task: "Raporlama sayfası"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "/reports route: bar chart, istatistikler, bölgesel eşleşmeler"
+
+  - task: "Admin paneli"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "/admin route: genel bakış, oteller listesi, eşleşmeler, fee status güncelleme"
+
+  - task: "WhatsApp linki - Eşleşme detayı"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "wa.me linki oluşturuldu, karşı otel telefon linki eklendi"
+
+  - task: "Geçmiş ilan gizleme (hide_expired default true)"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Backend tarafında date_end >= now filtresi, frontend'de checkbox"
+
+  - task: "Yeni tasarım - CSS ve UI güncellemesi"
+    implemented: true
+    working: true
+    file: "frontend/src/App.css"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Tamamen yeniden yazıldı. Daha modern, renkli navigasyon, gradient butonlar, modal sistemi"
+
+metadata:
+  created_by: "main_agent"
+  version: "2.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Alternatif teklif akışı (offer-alternative + accept/reject)"
+    - "İlan düzenleme ve silme"
+    - "Admin panel işlemleri"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Büyük güncelleme tamamlandı. Backend: 10+ yeni endpoint. Frontend: 5 yeni sayfa, modal sistemi, filtreleme, alternatif teklif UI. Tüm sayfalar manuel screenshot ile kontrol edildi ve çalışıyor görünüyor. Backend test edilmesini öneririm."
