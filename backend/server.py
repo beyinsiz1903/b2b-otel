@@ -129,12 +129,15 @@ class HotelBase(BaseModel):
 class HotelCreate(HotelBase):
     email: EmailStr
     password: str
+    documents: Optional[List[str]] = None   # yüklenen belge dosya adları
 
 
 class HotelPublic(HotelBase):
     id: str
     email: EmailStr
     is_admin: bool = False
+    approval_status: str = "approved"        # pending_review | approved | rejected
+    rejection_reason: Optional[str] = None
     created_at: datetime
 
 
