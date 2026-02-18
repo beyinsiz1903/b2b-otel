@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
 # Use public endpoint
-BASE_URL = "https://hotelmatch.preview.emergentagent.com/api"
+BASE_URL = "https://inter-hotel-rooms.preview.emergentagent.com/api"
 
 class Colors:
     GREEN = '\033[92m'
