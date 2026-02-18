@@ -1327,11 +1327,11 @@ const AvailabilityPage = () => {
             </label>
 
             {/* Resimler / Not */}
-            <label className="field">
-              <span>Resim URL'leri (virgülle ayır)</span>
-              <textarea name="image_urls_raw" value={form.image_urls_raw} onChange={onChange} placeholder="https://...1.jpg, https://...2.jpg" rows={2} />
-              <span className="field-help">⚠️ Logo veya tabela görünen görseller kullanmayın.</span>
-            </label>
+            <ImageUploader
+              value={form.image_urls_raw}
+              onChange={(val) => setForm({ ...form, image_urls_raw: val })}
+              label="Resimler (dosyadan yükle veya URL ekle)"
+            />
             <label className="field">
               <span>Ek Not (opsiyonel)</span>
               <textarea name="notes" value={form.notes} onChange={onChange} placeholder="Misafire iletmek istediğiniz özel not..." rows={2} />
