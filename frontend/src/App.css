@@ -739,6 +739,7 @@ a { text-decoration: none; color: inherit; }
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 0.85rem;
   margin-bottom: 0.85rem;
+  align-items: end;
 }
 
 .filter-actions {
