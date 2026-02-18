@@ -1230,6 +1230,57 @@ async def delete_room_template(template_id: str, current_hotel: Dict[str, Any] =
     return {"message": "Şablon silindi"}
 
 
+# --- File Upload ------------------------------------------------------------
+
+import shutil
+import mimetypes
+
+UPLOAD_DIR = Path(__file__).parent / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+MAX_FILE_SIZE_MB = 10
+
+
+@api.post("/upload-image")
+async def upload_image(
+    file: UploadFile = File(...),
+    current_hotel: Dict[str, Any] = Depends(get_current_hotel),
+):
+    # MIME type kontrolü
+    mime = file.content_type or mimetypes.guess_type(file.filename or "")[0] or ""
+    if mime not in ALLOWED_MIME_TYPES:
+        raise HTTPException(status_code=400, detail="Sadece JPG, PNG, WEBP veya GIF yükleyebilirsiniz.")
+
+    # Boyut kontrolü (chunk okuyarak)
+    max_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+    contents = await file.read()
+    if len(contents) > max_bytes:
+        raise HTTPException(status_code=400, detail=f"Dosya boyutu {MAX_FILE_SIZE_MB} MB'dan küçük olmalıdır.")
+
+    # Benzersiz dosya adı
+    ext = Path(file.filename or "image.jpg").suffix.lower() or ".jpg"
+    filename = f"{uuid.uuid4().hex}{ext}"
+    dest = UPLOAD_DIR / filename
+
+    with open(dest, "wb") as f:
+        f.write(contents)
+
+    await log_activity(current_hotel["_id"], "upload_image", "file", filename, {"original": file.filename})
+    return {"filename": filename, "url": f"/api/files/{filename}"}
+
+
+@api.get("/files/{filename}")
+async def serve_file(filename: str):
+    file_path = UPLOAD_DIR / filename
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Dosya bulunamadı")
+    # Path traversal önlemi
+    if UPLOAD_DIR not in file_path.parents and file_path.parent != UPLOAD_DIR:
+        raise HTTPException(status_code=403, detail="Yasak")
+    return FileResponse(str(file_path))
+
+
 # Healthcheck / root
 
 @api.get("/")
