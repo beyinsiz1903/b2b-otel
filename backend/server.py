@@ -1142,6 +1142,92 @@ async def admin_update_fee_status(match_id: str, body: Dict[str, str], admin: Di
     return {"id": match_id, "fee_status": new_status}
 
 
+# --- Room Templates ---------------------------------------------------------
+
+def template_to_public(doc: Dict[str, Any]) -> RoomTemplatePublic:
+    return RoomTemplatePublic(
+        id=doc["_id"],
+        hotel_id=doc["hotel_id"],
+        name=doc["name"],
+        room_type=doc["room_type"],
+        region=doc["region"],
+        micro_location=doc["micro_location"],
+        concept=doc["concept"],
+        capacity_label=doc["capacity_label"],
+        pax=doc["pax"],
+        breakfast_included=doc.get("breakfast_included", False),
+        min_nights=doc.get("min_nights", 1),
+        features=doc.get("features"),
+        guest_restrictions=doc.get("guest_restrictions"),
+        image_urls=doc.get("image_urls"),
+        price_suggestion=doc.get("price_suggestion"),
+        notes=doc.get("notes"),
+        created_at=doc["created_at"],
+        updated_at=doc["updated_at"],
+    )
+
+
+@api.get("/room-templates", response_model=List[RoomTemplatePublic])
+async def list_room_templates(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    cursor = db.room_templates.find({"hotel_id": current_hotel["_id"]}).sort("created_at", -1)
+    docs = await cursor.to_list(length=100)
+    return [template_to_public(d) for d in docs]
+
+
+@api.post("/room-templates", response_model=RoomTemplatePublic)
+async def create_room_template(payload: RoomTemplateCreate, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    tpl_id = str(uuid.uuid4())
+    now = now_utc()
+    payload_dict = payload.model_dump()
+    if payload_dict.get("features") is None:
+        payload_dict["features"] = []
+    if payload_dict.get("guest_restrictions") is None:
+        payload_dict["guest_restrictions"] = []
+    if payload_dict.get("image_urls") is None:
+        payload_dict["image_urls"] = []
+
+    doc = {
+        "_id": tpl_id,
+        "hotel_id": current_hotel["_id"],
+        **payload_dict,
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.room_templates.insert_one(doc)
+    await log_activity(current_hotel["_id"], "create", "room_template", tpl_id, {"name": payload.name})
+    return template_to_public(doc)
+
+
+@api.put("/room-templates/{template_id}", response_model=RoomTemplatePublic)
+async def update_room_template(template_id: str, payload: RoomTemplateUpdate, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    tpl = await db.room_templates.find_one({"_id": template_id})
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Şablon bulunamadı")
+    if tpl["hotel_id"] != current_hotel["_id"]:
+        raise HTTPException(status_code=403, detail="Bu şablona erişim yetkiniz yok")
+
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items()}
+    if not updates:
+        return template_to_public(tpl)
+    updates["updated_at"] = now_utc()
+    await db.room_templates.update_one({"_id": template_id}, {"$set": updates})
+    await log_activity(current_hotel["_id"], "update", "room_template", template_id, {"fields": list(updates.keys())})
+    refreshed = await db.room_templates.find_one({"_id": template_id})
+    return template_to_public(refreshed)
+
+
+@api.delete("/room-templates/{template_id}")
+async def delete_room_template(template_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    tpl = await db.room_templates.find_one({"_id": template_id})
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Şablon bulunamadı")
+    if tpl["hotel_id"] != current_hotel["_id"]:
+        raise HTTPException(status_code=403, detail="Bu şablona erişim yetkiniz yok")
+    await db.room_templates.delete_one({"_id": template_id})
+    await log_activity(current_hotel["_id"], "delete", "room_template", template_id, {})
+    return {"message": "Şablon silindi"}
+
+
 # Healthcheck / root
 
 @api.get("/")
