@@ -1794,10 +1794,11 @@ const EditListingModal = ({ listing, onClose, onSaved }) => {
             <input name="nights" type="number" value={form.nights} onChange={onChange} />
           </label>
         </div>
-        <label className="field">
-          <span>Resim URL'leri</span>
-          <textarea name="image_urls_raw" value={form.image_urls_raw} onChange={onChange} rows={2} />
-        </label>
+        <ImageUploader
+          value={form.image_urls_raw}
+          onChange={(val) => setForm({ ...form, image_urls_raw: val })}
+          label="Resimler (dosyadan yükle veya URL ekle)"
+        />
         <label className="field">
           <span>Özellikler</span>
           <textarea name="features_raw" value={form.features_raw} onChange={onChange} rows={2} />
