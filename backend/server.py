@@ -473,6 +473,8 @@ async def create_listing(payload: AvailabilityListingCreate, current_hotel: Dict
         payload_dict["image_urls"] = []
     if payload_dict.get("features") is None:
         payload_dict["features"] = []
+    if payload_dict.get("guest_restrictions") is None:
+        payload_dict["guest_restrictions"] = []
 
     doc = {
         "_id": listing_id,
