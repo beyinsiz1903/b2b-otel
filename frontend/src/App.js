@@ -2481,7 +2481,10 @@ const MatchDetailPage = () => {
 // ── Profile Page ──────────────────────────────────────────────────────────────
 const ProfilePage = () => {
   const { hotel, reload } = useAuth();
-  const [tab, setTab] = React.useState("profile");
+  const location = useLocation();
+  const [tab, setTab] = React.useState(
+    new URLSearchParams(location.search).get("sheets") === "connected" ? "sheets" : "profile"
+  );
   const [form, setForm] = React.useState({
     name: hotel?.name || "", region: hotel?.region || "Sapanca",
     micro_location: hotel?.micro_location || "", concept: hotel?.concept || "",
@@ -2492,7 +2495,11 @@ const ProfilePage = () => {
   const [pwForm, setPwForm] = React.useState({ current_password: "", new_password: "", confirm: "" });
   const [loading, setLoading] = React.useState(false);
   const [pwLoading, setPwLoading] = React.useState(false);
-  const [success, setSuccess] = React.useState("");
+  const [success, setSuccess] = React.useState(
+    new URLSearchParams(location.search).get("sheets") === "connected"
+      ? "✅ Google Sheets bağlantısı başarıyla kuruldu!"
+      : ""
+  );
   const [error, setError] = React.useState("");
 
   const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -2567,6 +2574,9 @@ const ProfilePage = () => {
             </div>
             <div className={`tab ${tab === "password" ? "active" : ""}`} onClick={() => setTab("password")}>
               Şifre Değiştir
+            </div>
+            <div className={`tab ${tab === "sheets" ? "active" : ""}`} onClick={() => setTab("sheets")}>
+              📊 Google Sheets
             </div>
           </div>
 
@@ -2663,6 +2673,8 @@ const ProfilePage = () => {
               </button>
             </form>
           )}
+
+          {tab === "sheets" && <GoogleSheetsTab />}
         </div>
       </div>
     </Layout>
