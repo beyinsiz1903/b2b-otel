@@ -1174,6 +1174,401 @@ async def admin_update_fee_status(match_id: str, body: Dict[str, str], admin: Di
     return {"id": match_id, "fee_status": new_status}
 
 
+# --- Google Sheets Integration ---------------------------------------------
+
+def _get_frontend_url() -> str:
+    backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
+    # Backend URL'den frontend URL'yi çıkar (aynı domain, farklı port)
+    # Ör: https://xxx.preview.emergentagent.com
+    return backend_url.replace(":8001", "").replace("/api", "").rstrip("/")
+
+def _get_redirect_uri() -> str:
+    backend_url = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001")
+    base = backend_url.rstrip("/")
+    if not base.endswith("/api"):
+        base = base + "/api"
+    return f"{base}/oauth/sheets/callback"
+
+
+def _build_flow(client_id: str, client_secret: str) -> Flow:
+    client_config = {
+        "web": {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": [_get_redirect_uri()],
+        }
+    }
+    return Flow.from_client_config(
+        client_config,
+        scopes=SHEETS_SCOPES,
+        redirect_uri=_get_redirect_uri(),
+    )
+
+
+async def _get_sheets_credentials(hotel_id: str) -> Optional[Credentials]:
+    """Token'ı DB'den al, gerekirse yenile."""
+    token_doc = await db.sheets_tokens.find_one({"hotel_id": hotel_id})
+    if not token_doc:
+        return None
+    config_doc = await db.sheets_config.find_one({"hotel_id": hotel_id})
+    if not config_doc:
+        return None
+
+    expires_at = token_doc.get("expires_at")
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    creds = Credentials(
+        token=token_doc["access_token"],
+        refresh_token=token_doc.get("refresh_token"),
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=config_doc["client_id"],
+        client_secret=config_doc["client_secret"],
+        scopes=SHEETS_SCOPES,
+    )
+
+    # Token süresi dolmuşsa yenile
+    if expires_at and datetime.now(timezone.utc) >= expires_at:
+        try:
+            await asyncio.to_thread(creds.refresh, GoogleAuthRequest())
+            new_expires = datetime.now(timezone.utc) + timedelta(seconds=3600)
+            await db.sheets_tokens.update_one(
+                {"hotel_id": hotel_id},
+                {"$set": {"access_token": creds.token, "expires_at": new_expires}},
+            )
+        except Exception:
+            return None
+
+    return creds
+
+
+async def _get_or_create_spreadsheet(creds: Credentials, hotel_name: str, hotel_id: str) -> str:
+    """Config'deki spreadsheet_id'yi döndür, yoksa yeni oluştur."""
+    config = await db.sheets_config.find_one({"hotel_id": hotel_id})
+    if config and config.get("spreadsheet_id"):
+        return config["spreadsheet_id"]
+
+    # Yeni spreadsheet oluştur
+    def create_sheet():
+        service = build("sheets", "v4", credentials=creds)
+        body = {
+            "properties": {"title": f"CapX – {hotel_name}"},
+            "sheets": [
+                {"properties": {"title": "Oda Tipleri"}},
+                {"properties": {"title": "Müsaitlikler"}},
+                {"properties": {"title": "Eşleşmeler"}},
+            ],
+        }
+        result = service.spreadsheets().create(body=body, fields="spreadsheetId").execute()
+        return result["spreadsheetId"]
+
+    spreadsheet_id = await asyncio.to_thread(create_sheet)
+    await db.sheets_config.update_one(
+        {"hotel_id": hotel_id},
+        {"$set": {"spreadsheet_id": spreadsheet_id}},
+    )
+    return spreadsheet_id
+
+
+async def _write_sheet(creds: Credentials, spreadsheet_id: str, sheet_name: str, rows: List[List[Any]]) -> None:
+    """Sayfayı tamamen sil ve yeniden yaz."""
+    def do_write():
+        service = build("sheets", "v4", credentials=creds)
+        # Önce sayfayı temizle
+        service.spreadsheets().values().clear(
+            spreadsheetId=spreadsheet_id,
+            range=f"{sheet_name}!A1:Z10000",
+        ).execute()
+        if rows:
+            service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=f"{sheet_name}!A1",
+                valueInputOption="USER_ENTERED",
+                body={"values": rows},
+            ).execute()
+    await asyncio.to_thread(do_write)
+
+
+# ── OAuth Endpoints ─────────────────────────────────────────────────────────
+
+@api.get("/oauth/sheets/login")
+async def sheets_oauth_login(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    config = await db.sheets_config.find_one({"hotel_id": current_hotel["_id"]})
+    if not config or not config.get("client_id") or not config.get("client_secret"):
+        raise HTTPException(status_code=400, detail="Önce Google Client ID ve Client Secret kaydedin.")
+
+    flow = _build_flow(config["client_id"], config["client_secret"])
+    auth_url, state = flow.authorization_url(access_type="offline", prompt="consent")
+
+    # State → hotel_id eşlemesini geçici kaydet (10 dk TTL)
+    await db.oauth_states.insert_one({
+        "_id": state,
+        "hotel_id": current_hotel["_id"],
+        "created_at": now_utc(),
+    })
+    return {"auth_url": auth_url}
+
+
+@api.get("/oauth/sheets/callback")
+async def sheets_oauth_callback(code: str, state: str):
+    state_doc = await db.oauth_states.find_one({"_id": state})
+    if not state_doc:
+        raise HTTPException(status_code=400, detail="Geçersiz ya da süresi dolmuş OAuth state.")
+
+    hotel_id = state_doc["hotel_id"]
+    config = await db.sheets_config.find_one({"hotel_id": hotel_id})
+    if not config:
+        raise HTTPException(status_code=400, detail="Sheets yapılandırması bulunamadı.")
+
+    flow = _build_flow(config["client_id"], config["client_secret"])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        await asyncio.to_thread(flow.fetch_token, code=code)
+
+    creds = flow.credentials
+
+    # Scope kontrolü
+    granted_scopes = set(creds.scopes or [])
+    required = {"https://www.googleapis.com/auth/spreadsheets"}
+    if not required.issubset(granted_scopes):
+        missing = required - granted_scopes
+        raise HTTPException(status_code=400, detail=f"Eksik izin: {', '.join(missing)}")
+
+    # Google hesap e-postasını al
+    google_email = None
+    try:
+        def get_email():
+            service = build("oauth2", "v2", credentials=creds)
+            return service.userinfo().get().execute().get("email")
+        google_email = await asyncio.to_thread(get_email)
+    except Exception:
+        pass
+
+    # Token kaydet
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=3600)
+    await db.sheets_tokens.replace_one(
+        {"hotel_id": hotel_id},
+        {
+            "hotel_id": hotel_id,
+            "access_token": creds.token,
+            "refresh_token": creds.refresh_token,
+            "expires_at": expires_at,
+            "google_email": google_email,
+            "connected_at": now_utc(),
+        },
+        upsert=True,
+    )
+    # Config güncelle
+    await db.sheets_config.update_one(
+        {"hotel_id": hotel_id},
+        {"$set": {"google_email": google_email, "connected_at": now_utc()}},
+    )
+    # State sil
+    await db.oauth_states.delete_one({"_id": state})
+    await log_activity(hotel_id, "sheets_connect", "integration", hotel_id, {"email": google_email})
+
+    # Frontend'e yönlendir
+    frontend_url = _get_frontend_url()
+    return RedirectResponse(f"{frontend_url}/profile?sheets=connected")
+
+
+# ── Sheets Config Endpoints ─────────────────────────────────────────────────
+
+@api.post("/sheets/config")
+async def save_sheets_config(payload: SheetsConfigSave, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    await db.sheets_config.replace_one(
+        {"hotel_id": current_hotel["_id"]},
+        {
+            "hotel_id": current_hotel["_id"],
+            "client_id": payload.client_id,
+            "client_secret": payload.client_secret,
+            "spreadsheet_id": payload.spreadsheet_id or None,
+            "updated_at": now_utc(),
+        },
+        upsert=True,
+    )
+    return {"message": "Yapılandırma kaydedildi. Şimdi Google ile bağlanabilirsiniz."}
+
+
+@api.get("/sheets/config")
+async def get_sheets_config(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    config = await db.sheets_config.find_one({"hotel_id": current_hotel["_id"]})
+    token = await db.sheets_tokens.find_one({"hotel_id": current_hotel["_id"]})
+    connected = token is not None
+    if not config:
+        return {
+            "hotel_id": current_hotel["_id"],
+            "client_id": None,
+            "spreadsheet_id": None,
+            "connected": False,
+            "google_email": None,
+            "connected_at": None,
+        }
+    # client_id'yi maskele
+    cid = config.get("client_id", "")
+    masked = cid[:12] + "..." if len(cid) > 12 else cid
+    return {
+        "hotel_id": current_hotel["_id"],
+        "client_id": masked,
+        "client_id_full": cid,   # form pre-fill için
+        "client_secret_saved": bool(config.get("client_secret")),
+        "spreadsheet_id": config.get("spreadsheet_id"),
+        "connected": connected,
+        "google_email": token.get("google_email") if token else None,
+        "connected_at": token.get("connected_at").isoformat() if token and token.get("connected_at") else None,
+    }
+
+
+@api.delete("/sheets/disconnect")
+async def sheets_disconnect(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    await db.sheets_tokens.delete_one({"hotel_id": current_hotel["_id"]})
+    await log_activity(current_hotel["_id"], "sheets_disconnect", "integration", current_hotel["_id"], {})
+    return {"message": "Google Sheets bağlantısı kesildi."}
+
+
+# ── Sync Endpoints ──────────────────────────────────────────────────────────
+
+@api.post("/sheets/sync/templates")
+async def sync_templates_to_sheets(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    creds = await _get_sheets_credentials(current_hotel["_id"])
+    if not creds:
+        raise HTTPException(status_code=400, detail="Google Sheets bağlantısı yok. Önce bağlanın.")
+
+    spreadsheet_id = await _get_or_create_spreadsheet(creds, current_hotel["name"], current_hotel["_id"])
+
+    cursor = db.room_templates.find({"hotel_id": current_hotel["_id"]})
+    templates = await cursor.to_list(length=500)
+
+    headers = ["Şablon Adı", "Oda Tipi", "Bölge", "Mikro Lokasyon", "Konsept",
+               "Kapasite", "Kişi Sayısı", "Kahvaltı Dahil", "Min. Konaklama (gece)",
+               "Fiyat Önerisi (TL)", "Özellikler", "Kısıtlamalar", "Son Güncelleme"]
+    rows = [headers]
+    for t in templates:
+        rows.append([
+            t.get("name", ""),
+            t.get("room_type", ""),
+            t.get("region", ""),
+            t.get("micro_location", ""),
+            t.get("concept", ""),
+            t.get("capacity_label", ""),
+            t.get("pax", ""),
+            "Evet" if t.get("breakfast_included") else "Hayır",
+            t.get("min_nights", 1),
+            t.get("price_suggestion", ""),
+            ", ".join(t.get("features") or []),
+            ", ".join(t.get("guest_restrictions") or []),
+            t.get("updated_at", now_utc()).strftime("%d.%m.%Y %H:%M") if t.get("updated_at") else "",
+        ])
+
+    await _write_sheet(creds, spreadsheet_id, "Oda Tipleri", rows)
+    await log_activity(current_hotel["_id"], "sheets_sync", "room_templates", current_hotel["_id"],
+                       {"count": len(templates), "spreadsheet_id": spreadsheet_id})
+    return {
+        "message": f"{len(templates)} oda tipi senkronize edildi.",
+        "spreadsheet_id": spreadsheet_id,
+        "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}",
+    }
+
+
+@api.post("/sheets/sync/listings")
+async def sync_listings_to_sheets(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    creds = await _get_sheets_credentials(current_hotel["_id"])
+    if not creds:
+        raise HTTPException(status_code=400, detail="Google Sheets bağlantısı yok. Önce bağlanın.")
+
+    spreadsheet_id = await _get_or_create_spreadsheet(creds, current_hotel["name"], current_hotel["_id"])
+
+    cursor = db.availability_listings.find({"hotel_id": current_hotel["_id"]}).sort("date_start", -1)
+    listings = await cursor.to_list(length=500)
+
+    headers = ["İlan ID", "Oda Tipi", "Konsept", "Bölge", "Mikro Lokasyon",
+               "Kapasite", "Kişi", "Başlangıç", "Bitiş", "Gece Sayısı",
+               "Fiyat (TL/gece)", "Kahvaltı", "Min. Gece", "Durum", "Kilitli",
+               "Özellikler", "Kısıtlamalar", "Oluşturma Tarihi"]
+    rows = [headers]
+    for l in listings:
+        date_start = l.get("date_start")
+        date_end = l.get("date_end")
+        rows.append([
+            l.get("_id", "")[:8],
+            l.get("room_type", ""),
+            l.get("concept", ""),
+            l.get("region", ""),
+            l.get("micro_location", ""),
+            l.get("capacity_label", ""),
+            l.get("pax", ""),
+            date_start.strftime("%d.%m.%Y") if date_start else "",
+            date_end.strftime("%d.%m.%Y") if date_end else "",
+            l.get("nights", ""),
+            l.get("price_min", ""),
+            "Evet" if l.get("breakfast_included") else "Hayır",
+            l.get("min_nights", 1),
+            l.get("availability_status", ""),
+            "Evet" if l.get("is_locked") else "Hayır",
+            ", ".join(l.get("features") or []),
+            ", ".join(l.get("guest_restrictions") or []),
+            l.get("created_at", now_utc()).strftime("%d.%m.%Y") if l.get("created_at") else "",
+        ])
+
+    await _write_sheet(creds, spreadsheet_id, "Müsaitlikler", rows)
+    await log_activity(current_hotel["_id"], "sheets_sync", "listings", current_hotel["_id"],
+                       {"count": len(listings), "spreadsheet_id": spreadsheet_id})
+    return {
+        "message": f"{len(listings)} müsaitlik ilanı senkronize edildi.",
+        "spreadsheet_id": spreadsheet_id,
+        "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}",
+    }
+
+
+@api.post("/sheets/sync/matches")
+async def sync_matches_to_sheets(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    creds = await _get_sheets_credentials(current_hotel["_id"])
+    if not creds:
+        raise HTTPException(status_code=400, detail="Google Sheets bağlantısı yok. Önce bağlanın.")
+
+    spreadsheet_id = await _get_or_create_spreadsheet(creds, current_hotel["name"], current_hotel["_id"])
+
+    cursor = db.matches.find({"$or": [{"hotel_a_id": current_hotel["_id"]}, {"hotel_b_id": current_hotel["_id"]}]}).sort("accepted_at", -1)
+    matches = await cursor.to_list(length=500)
+
+    headers = ["Referans Kodu", "Kabul Tarihi", "Hizmet Bedeli (TL)", "Ödeme Durumu", "Oluşturma Tarihi"]
+    rows = [headers]
+    for m in matches:
+        accepted = m.get("accepted_at")
+        created = m.get("created_at")
+        rows.append([
+            m.get("reference_code", ""),
+            accepted.strftime("%d.%m.%Y %H:%M") if accepted else "",
+            m.get("fee_amount", ""),
+            m.get("fee_status", ""),
+            created.strftime("%d.%m.%Y") if created else "",
+        ])
+
+    await _write_sheet(creds, spreadsheet_id, "Eşleşmeler", rows)
+    await log_activity(current_hotel["_id"], "sheets_sync", "matches", current_hotel["_id"],
+                       {"count": len(matches), "spreadsheet_id": spreadsheet_id})
+    return {
+        "message": f"{len(matches)} eşleşme senkronize edildi.",
+        "spreadsheet_id": spreadsheet_id,
+        "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}",
+    }
+
+
+@api.post("/sheets/sync/all")
+async def sync_all_to_sheets(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    r1 = await sync_templates_to_sheets(current_hotel)
+    r2 = await sync_listings_to_sheets(current_hotel)
+    r3 = await sync_matches_to_sheets(current_hotel)
+    return {
+        "message": "Tüm veriler senkronize edildi.",
+        "spreadsheet_url": r1["spreadsheet_url"],
+        "details": {"templates": r1["message"], "listings": r2["message"], "matches": r3["message"]},
+    }
+
+
 # --- Room Templates ---------------------------------------------------------
 
 def template_to_public(doc: Dict[str, Any]) -> RoomTemplatePublic:
