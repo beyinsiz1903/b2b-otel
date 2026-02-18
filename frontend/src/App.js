@@ -523,6 +523,7 @@ const ListingsPage = () => {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useEffect(() => { load(filters); }, []);
 
   const handleFilter = (e) => {
