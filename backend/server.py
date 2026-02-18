@@ -156,6 +156,12 @@ class AvailabilityListingCreate(BaseModel):
     image_urls: Optional[List[str]] = None
     features: Optional[List[str]] = None
     notes: Optional[str] = None
+    # New fields
+    room_type: Optional[str] = None
+    breakfast_included: Optional[bool] = False
+    min_nights: Optional[int] = 1
+    guest_restrictions: Optional[List[str]] = None
+    template_id: Optional[str] = None
 
 
 class AvailabilityListingUpdate(BaseModel):
@@ -173,6 +179,10 @@ class AvailabilityListingUpdate(BaseModel):
     image_urls: Optional[List[str]] = None
     features: Optional[List[str]] = None
     notes: Optional[str] = None
+    room_type: Optional[str] = None
+    breakfast_included: Optional[bool] = None
+    min_nights: Optional[int] = None
+    guest_restrictions: Optional[List[str]] = None
 
 
 class AvailabilityListingPublic(BaseModel):
@@ -192,10 +202,72 @@ class AvailabilityListingPublic(BaseModel):
     image_urls: Optional[List[str]] = None
     features: Optional[List[str]] = None
     notes: Optional[str] = None
+    room_type: Optional[str] = None
+    breakfast_included: Optional[bool] = False
+    min_nights: Optional[int] = 1
+    guest_restrictions: Optional[List[str]] = None
 
 
 class AvailabilityListingMine(AvailabilityListingPublic):
     hotel_id: str
+    template_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+# --- Room Template Schemas --------------------------------------------------
+
+class RoomTemplateCreate(BaseModel):
+    name: str                                    # Şablon adı (Göl Manzaralı Bungalov)
+    room_type: str                               # bungalov, suite, standart, villa, apart, dag_evi
+    region: str
+    micro_location: str
+    concept: str
+    capacity_label: str
+    pax: int
+    breakfast_included: bool = False
+    min_nights: int = 1
+    features: Optional[List[str]] = None
+    guest_restrictions: Optional[List[str]] = None
+    image_urls: Optional[List[str]] = None
+    price_suggestion: Optional[float] = None    # Fiyat önerisi
+    notes: Optional[str] = None
+
+
+class RoomTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    room_type: Optional[str] = None
+    region: Optional[str] = None
+    micro_location: Optional[str] = None
+    concept: Optional[str] = None
+    capacity_label: Optional[str] = None
+    pax: Optional[int] = None
+    breakfast_included: Optional[bool] = None
+    min_nights: Optional[int] = None
+    features: Optional[List[str]] = None
+    guest_restrictions: Optional[List[str]] = None
+    image_urls: Optional[List[str]] = None
+    price_suggestion: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class RoomTemplatePublic(BaseModel):
+    id: str
+    hotel_id: str
+    name: str
+    room_type: str
+    region: str
+    micro_location: str
+    concept: str
+    capacity_label: str
+    pax: int
+    breakfast_included: bool
+    min_nights: int
+    features: Optional[List[str]] = None
+    guest_restrictions: Optional[List[str]] = None
+    image_urls: Optional[List[str]] = None
+    price_suggestion: Optional[float] = None
+    notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
