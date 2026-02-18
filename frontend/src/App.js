@@ -376,8 +376,15 @@ const LoginPage = () => {
     try {
       await login(email, password);
       navigate("/dashboard");
-    } catch {
-      setError("Giriş başarısız. E-posta veya şifre hatalı.");
+    } catch (err) {
+      const detail = err.response?.data?.detail || "";
+      if (detail.startsWith("PENDING_REVIEW:")) {
+        setError("⏳ Başvurunuz henüz incelenmektedir. Onaylandıktan sonra giriş yapabilirsiniz.");
+      } else if (detail.startsWith("REJECTED:")) {
+        setError(detail.replace("REJECTED: ", "❌ "));
+      } else {
+        setError("Giriş başarısız. E-posta veya şifre hatalı.");
+      }
     } finally {
       setLoading(false);
     }
