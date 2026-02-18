@@ -843,6 +843,20 @@ const ListingDetailPage = () => {
               {listing.price_min.toLocaleString("tr-TR")} TL
               <span style={{ fontSize: "0.85rem", fontWeight: 400, color: "#6b7c93" }}> /gece</span>
             </div>
+            {listing.breakfast_included && (
+              <div style={{ fontSize: "0.85rem", color: "#166534", fontWeight: 600 }}>☕ Kahvaltı dahil</div>
+            )}
+            {listing.min_nights > 1 && (
+              <div style={{ fontSize: "0.85rem", color: "#6b7c93" }}>⏱ Minimum {listing.min_nights} gece konaklama</div>
+            )}
+            {listing.guest_restrictions && listing.guest_restrictions.length > 0 && (
+              <div style={{ background: "#fff5f5", borderRadius: "0.5rem", padding: "0.6rem 0.75rem", border: "1px solid #fecaca" }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#dc2626", marginBottom: "0.3rem" }}>🚫 Kısıtlamalar</div>
+                {listing.guest_restrictions.map((r) => (
+                  <div key={r} style={{ fontSize: "0.8rem", color: "#7f1d1d" }}>• {r}</div>
+                ))}
+              </div>
+            )}
             {listing.notes && (
               <div style={{ fontSize: "0.85rem", color: "#4a5568", borderTop: "1px solid #e2e8f0", paddingTop: "0.75rem" }}>
                 <strong>Not:</strong> {listing.notes}
