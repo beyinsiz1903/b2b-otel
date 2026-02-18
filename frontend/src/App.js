@@ -1347,6 +1347,182 @@ const AvailabilityPage = () => {
   );
 };
 
+// ── Room Template Modal ───────────────────────────────────────────────────────
+const RoomTemplateModal = ({ template, onClose, onSaved }) => {
+  const emptyTpl = {
+    name: "", room_type: "bungalov", region: "Sapanca", micro_location: "",
+    concept: "", capacity_label: "2+1", pax: 2,
+    breakfast_included: false, min_nights: 1,
+    features_raw: "", restrictions_raw: "", image_urls_raw: "",
+    price_suggestion: "", notes: "",
+  };
+  const [form, setForm] = React.useState(
+    template ? {
+      name: template.name, room_type: template.room_type,
+      region: template.region, micro_location: template.micro_location,
+      concept: template.concept, capacity_label: template.capacity_label,
+      pax: template.pax, breakfast_included: template.breakfast_included,
+      min_nights: template.min_nights,
+      features_raw: (template.features || []).join(", "),
+      restrictions_raw: (template.guest_restrictions || []).join(", "),
+      image_urls_raw: (template.image_urls || []).join(", "),
+      price_suggestion: template.price_suggestion || "",
+      notes: template.notes || "",
+    } : emptyTpl
+  );
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  const onChange = (e) => {
+    const val = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    setForm({ ...form, [e.target.name]: val });
+  };
+  const addFeature = (chip) => {
+    const cur = form.features_raw ? form.features_raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    if (!cur.includes(chip)) setForm({ ...form, features_raw: [...cur, chip].join(", ") });
+  };
+  const addRestriction = (chip) => {
+    const cur = form.restrictions_raw ? form.restrictions_raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    if (!cur.includes(chip)) setForm({ ...form, restrictions_raw: [...cur, chip].join(", ") });
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setError(""); setLoading(true);
+    const payload = {
+      name: form.name, room_type: form.room_type, region: form.region,
+      micro_location: form.micro_location, concept: form.concept,
+      capacity_label: form.capacity_label, pax: Number(form.pax),
+      breakfast_included: form.breakfast_included, min_nights: Number(form.min_nights),
+      features: form.features_raw ? form.features_raw.split(",").map((s) => s.trim()).filter(Boolean) : [],
+      guest_restrictions: form.restrictions_raw ? form.restrictions_raw.split(",").map((s) => s.trim()).filter(Boolean) : [],
+      image_urls: form.image_urls_raw ? form.image_urls_raw.split(",").map((s) => s.trim()).filter(Boolean) : [],
+      price_suggestion: form.price_suggestion ? Number(form.price_suggestion) : null,
+      notes: form.notes || null,
+    };
+    try {
+      if (template) { await axios.put(`/room-templates/${template.id}`, payload); }
+      else { await axios.post("/room-templates", payload); }
+      onSaved();
+    } catch (err) {
+      setError(err.response?.data?.detail || "İşlem başarısız.");
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <Modal
+      open={true} onClose={onClose} size="lg"
+      title={template ? "✏️ Şablonu Düzenle" : "🗂 Yeni Oda Şablonu"}
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>İptal</button>
+          <button className="btn-primary" onClick={handleSave} disabled={loading}>
+            {loading ? <><span className="loading-spin" /> Kaydediliyor...</> : "💾 Kaydet"}
+          </button>
+        </>
+      }
+    >
+      <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+        <div className="info-banner" style={{ marginBottom: 0 }}>
+          Şablonu bir kez kaydedin. İlan açarken seçip sadece tarih &amp; fiyat girin.
+        </div>
+
+        <label className="field">
+          <span>Şablon Adı (sadece size görünür)</span>
+          <input name="name" value={form.name} onChange={onChange} required placeholder="Örn: Göl Manzaralı Bungalov, Jakuzili Süit..." />
+          <span className="field-help">Bu isim sadece sizin iç kullanımınız için, misafirlere gösterilmez.</span>
+        </label>
+
+        <div className="grid-3">
+          <label className="field">
+            <span>Oda Tipi</span>
+            <select name="room_type" value={form.room_type} onChange={onChange}>
+              {ROOM_TYPES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Bölge</span>
+            <select name="region" value={form.region} onChange={onChange}>
+              <option value="Sapanca">Sapanca</option>
+              <option value="Kartepe">Kartepe</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Mikro Lokasyon</span>
+            <input name="micro_location" value={form.micro_location} onChange={onChange} required placeholder="Göl kıyısı..." />
+          </label>
+        </div>
+
+        <div className="grid-3">
+          <label className="field">
+            <span>Konsept</span>
+            <input name="concept" value={form.concept} onChange={onChange} required placeholder="Bungalov, Butik..." />
+          </label>
+          <label className="field">
+            <span>Kapasite Etiketi</span>
+            <input name="capacity_label" value={form.capacity_label} onChange={onChange} placeholder="2+1, 4+2..." />
+          </label>
+          <label className="field">
+            <span>Kişi Sayısı</span>
+            <input name="pax" type="number" min="1" value={form.pax} onChange={onChange} />
+          </label>
+        </div>
+
+        <div className="grid-3">
+          <label className="field">
+            <span>Min. Konaklama (gece)</span>
+            <input name="min_nights" type="number" min="1" value={form.min_nights} onChange={onChange} />
+          </label>
+          <label className="field">
+            <span>Fiyat Önerisi (TL/gece)</span>
+            <input name="price_suggestion" type="number" min="0" value={form.price_suggestion} onChange={onChange} placeholder="İlan açarken otomatik dolar" />
+          </label>
+          <label className="field">
+            <span>Kahvaltı</span>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 0", cursor: "pointer" }}>
+              <input type="checkbox" name="breakfast_included" checked={form.breakfast_included} onChange={onChange} />
+              <span style={{ fontWeight: 600 }}>Kahvaltı dahil</span>
+            </label>
+          </label>
+        </div>
+
+        <label className="field">
+          <span>Misafir Kısıtlamaları</span>
+          <textarea name="restrictions_raw" value={form.restrictions_raw} onChange={onChange} rows={2} placeholder="Evcil hayvan kabul edilmez, 18 yaş üstü..." />
+          <div style={{ marginTop: "0.4rem" }}>
+            {GUEST_RESTRICTIONS_LIST.map((r) => {
+              const sel = form.restrictions_raw.split(",").map((s) => s.trim()).includes(r);
+              return <button key={r} type="button" className={`feature-chip ${sel ? "selected" : ""}`} onClick={() => addRestriction(r)}>{sel ? "✓ " : ""}{r}</button>;
+            })}
+          </div>
+        </label>
+
+        <label className="field">
+          <span>Özellikler &amp; İmkânlar</span>
+          <textarea name="features_raw" value={form.features_raw} onChange={onChange} rows={2} placeholder="Jakuzili, Şömine, Göl manzarası..." />
+          <div style={{ marginTop: "0.4rem" }}>
+            {FEATURES_LIST.map((chip) => {
+              const sel = form.features_raw.split(",").map((s) => s.trim()).includes(chip);
+              return <button key={chip} type="button" className={`feature-chip ${sel ? "selected" : ""}`} onClick={() => addFeature(chip)}>{sel ? "✓ " : ""}{chip}</button>;
+            })}
+          </div>
+        </label>
+
+        <label className="field">
+          <span>Resim URL'leri (virgülle ayır)</span>
+          <textarea name="image_urls_raw" value={form.image_urls_raw} onChange={onChange} rows={2} placeholder="https://...1.jpg, https://...2.jpg" />
+          <span className="field-help">⚠️ Logo/tabela görünen görseller kullanmayın.</span>
+        </label>
+        <label className="field">
+          <span>Not (opsiyonel)</span>
+          <textarea name="notes" value={form.notes} onChange={onChange} rows={2} placeholder="Bu oda tipi hakkında ek bilgi..." />
+        </label>
+        {error && <div className="error">{error}</div>}
+      </form>
+    </Modal>
+  );
+};
+
 // ── Edit Listing Modal ────────────────────────────────────────────────────────
 const EditListingModal = ({ listing, onClose, onSaved }) => {
   const [form, setForm] = React.useState({
