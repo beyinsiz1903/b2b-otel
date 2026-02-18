@@ -3383,6 +3383,56 @@ const AdminPage = () => {
 
       {loading ? (
         <div className="page-center" style={{ height: 200 }}><span className="loading-spin" /></div>
+      ) : tab === "pending" ? (
+        <>
+          {pending.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">✅</div>
+              <div className="empty-state-title">Bekleyen üyelik talebi yok</div>
+              <div className="empty-state-sub">Tüm başvurular incelendi.</div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {pending.map((h) => (
+                <div key={h.id} style={{ background: "#fff", borderRadius: "1rem", padding: "1.25rem", boxShadow: "0 2px 10px rgba(0,0,0,.05)", border: "1px solid #f0f4f8" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
+                    <div style={{ flex: 1, minWidth: 250 }}>
+                      <div style={{ fontWeight: 700, fontSize: "1rem", color: "#1a3a2a", marginBottom: "0.5rem" }}>{h.name}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.25rem 1rem", fontSize: "0.85rem", color: "#4a5568" }}>
+                        <div>📧 {h.email}</div>
+                        <div>📍 {h.region} · {h.concept}</div>
+                        <div>📞 {h.phone}</div>
+                        <div>🏠 {h.address}</div>
+                        {h.contact_person && <div>👤 {h.contact_person}</div>}
+                        <div style={{ color: "#9ca3af" }}>📅 {h.created_at ? new Date(h.created_at).toLocaleString("tr-TR") : "-"}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "flex-end" }}>
+                      {h.documents && h.documents.length > 0 ? (
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => setDocModal({ hotel: h, docs: h.documents })}
+                        >
+                          📄 Belgeleri Gör ({h.documents.length})
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: "0.78rem", color: "#dc2626" }}>⚠️ Belge yüklenmemiş</span>
+                      )}
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <button className="btn-primary btn-sm" onClick={() => approveHotel(h.id)}>
+                          ✅ Onayla
+                        </button>
+                        <button className="btn-danger btn-sm" onClick={() => { setRejectModal(h); setRejectReason(""); }}>
+                          ❌ Reddet
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       ) : tab === "overview" && overview ? (
         <>
           <div className="cards-row">
