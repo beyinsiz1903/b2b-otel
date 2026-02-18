@@ -1168,8 +1168,14 @@ async def admin_overview(admin: Dict[str, Any] = Depends(get_current_admin)):
 
 
 @api.get("/admin/hotels")
-async def admin_list_hotels(admin: Dict[str, Any] = Depends(get_current_admin)):
-    cursor = db.hotels.find({}).sort("created_at", -1)
+async def admin_list_hotels(
+    status_filter: Optional[str] = None,  # pending_review | approved | rejected | all
+    admin: Dict[str, Any] = Depends(get_current_admin)
+):
+    query = {}
+    if status_filter and status_filter != "all":
+        query["approval_status"] = status_filter
+    cursor = db.hotels.find(query).sort("created_at", -1)
     docs = await cursor.to_list(length=1000)
     result = []
     for doc in docs:
@@ -1183,12 +1189,44 @@ async def admin_list_hotels(admin: Dict[str, Any] = Depends(get_current_admin)):
             "region": doc["region"],
             "concept": doc["concept"],
             "phone": doc["phone"],
+            "address": doc.get("address", ""),
+            "contact_person": doc.get("contact_person", ""),
             "is_admin": doc.get("is_admin", False),
+            "approval_status": doc.get("approval_status", "approved"),
+            "rejection_reason": doc.get("rejection_reason"),
+            "documents": doc.get("documents", []),
             "created_at": doc["created_at"].isoformat() if isinstance(doc.get("created_at"), datetime) else None,
             "match_count": match_count,
             "listing_count": listing_count,
         })
     return result
+
+
+@api.put("/admin/hotels/{hotel_id}/approve")
+async def admin_approve_hotel(hotel_id: str, admin: Dict[str, Any] = Depends(get_current_admin)):
+    hotel = await db.hotels.find_one({"_id": hotel_id})
+    if not hotel:
+        raise HTTPException(status_code=404, detail="Otel bulunamadı")
+    await db.hotels.update_one(
+        {"_id": hotel_id},
+        {"$set": {"approval_status": "approved", "rejection_reason": None, "updated_at": now_utc()}}
+    )
+    await log_activity(admin["_id"], "approve_hotel", "hotel", hotel_id, {"hotel_name": hotel.get("name")})
+    return {"id": hotel_id, "approval_status": "approved", "message": f"{hotel.get('name')} onaylandı."}
+
+
+@api.put("/admin/hotels/{hotel_id}/reject")
+async def admin_reject_hotel(hotel_id: str, body: Dict[str, str], admin: Dict[str, Any] = Depends(get_current_admin)):
+    hotel = await db.hotels.find_one({"_id": hotel_id})
+    if not hotel:
+        raise HTTPException(status_code=404, detail="Otel bulunamadı")
+    reason = body.get("reason", "")
+    await db.hotels.update_one(
+        {"_id": hotel_id},
+        {"$set": {"approval_status": "rejected", "rejection_reason": reason, "updated_at": now_utc()}}
+    )
+    await log_activity(admin["_id"], "reject_hotel", "hotel", hotel_id, {"reason": reason})
+    return {"id": hotel_id, "approval_status": "rejected", "message": f"{hotel.get('name')} reddedildi."}
 
 
 @api.get("/admin/matches")
