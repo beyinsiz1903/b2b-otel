@@ -3268,76 +3268,87 @@ const ReportsPage = () => {
 const AdminPage = () => {
   const { hotel } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = React.useState("overview");
+  const [tab, setTab] = React.useState("pending");
   const [overview, setOverview] = React.useState(null);
+  const [pending, setPending] = React.useState([]);
   const [hotels, setHotels] = React.useState([]);
   const [matches, setMatches] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
+  const [rejectModal, setRejectModal] = React.useState(null); // hotel to reject
+  const [rejectReason, setRejectReason] = React.useState("");
+  const [docModal, setDocModal] = React.useState(null); // {hotel, docs}
+  const [actionMsg, setActionMsg] = React.useState("");
 
   React.useEffect(() => {
-    if (!hotel?.is_admin) {
-      navigate("/dashboard");
-    }
+    if (!hotel?.is_admin) navigate("/dashboard");
   }, [hotel, navigate]);
 
   React.useEffect(() => {
+    if (tab === "pending") loadPending();
     if (tab === "overview") loadOverview();
     if (tab === "hotels") loadHotels();
     if (tab === "matches") loadAdminMatches();
   }, [tab]);
 
-  const loadOverview = async () => {
+  const loadPending = async () => {
     setLoading(true);
     try {
-      const res = await axios.get("/admin/overview");
-      setOverview(res.data);
-    } catch {
-      setOverview(null);
-    } finally {
-      setLoading(false);
-    }
+      const res = await axios.get("/admin/hotels?status_filter=pending_review");
+      setPending(res.data);
+    } catch { setPending([]); } finally { setLoading(false); }
+  };
+
+  const loadOverview = async () => {
+    setLoading(true);
+    try { const res = await axios.get("/admin/overview"); setOverview(res.data); }
+    catch { setOverview(null); } finally { setLoading(false); }
   };
 
   const loadHotels = async () => {
     setLoading(true);
-    try {
-      const res = await axios.get("/admin/hotels");
-      setHotels(res.data);
-    } catch {
-      setHotels([]);
-    } finally {
-      setLoading(false);
-    }
+    try { const res = await axios.get("/admin/hotels"); setHotels(res.data); }
+    catch { setHotels([]); } finally { setLoading(false); }
   };
 
   const loadAdminMatches = async () => {
     setLoading(true);
+    try { const res = await axios.get("/admin/matches"); setMatches(res.data); }
+    catch { setMatches([]); } finally { setLoading(false); }
+  };
+
+  const approveHotel = async (hotelId) => {
     try {
-      const res = await axios.get("/admin/matches");
-      setMatches(res.data);
-    } catch {
-      setMatches([]);
-    } finally {
-      setLoading(false);
-    }
+      const res = await axios.put(`/admin/hotels/${hotelId}/approve`);
+      setActionMsg(`✅ ${res.data.message}`);
+      await loadPending(); await loadHotels();
+    } catch (err) { alert(err.response?.data?.detail || "İşlem başarısız."); }
+  };
+
+  const rejectHotel = async () => {
+    if (!rejectModal) return;
+    try {
+      const res = await axios.put(`/admin/hotels/${rejectModal.id}/reject`, { reason: rejectReason });
+      setActionMsg(`❌ ${res.data.message}`);
+      setRejectModal(null); setRejectReason("");
+      await loadPending(); await loadHotels();
+    } catch (err) { alert(err.response?.data?.detail || "İşlem başarısız."); }
   };
 
   const toggleAdmin = async (hotelId) => {
-    try {
-      await axios.put(`/admin/hotels/${hotelId}/toggle-admin`);
-      await loadHotels();
-    } catch (err) {
-      alert(err.response?.data?.detail || "İşlem başarısız.");
-    }
+    try { await axios.put(`/admin/hotels/${hotelId}/toggle-admin`); await loadHotels(); }
+    catch (err) { alert(err.response?.data?.detail || "İşlem başarısız."); }
   };
 
   const updateFeeStatus = async (matchId, status) => {
-    try {
-      await axios.put(`/admin/matches/${matchId}/fee-status`, { fee_status: status });
-      await loadAdminMatches();
-    } catch (err) {
-      alert(err.response?.data?.detail || "İşlem başarısız.");
-    }
+    try { await axios.put(`/admin/matches/${matchId}/fee-status`, { fee_status: status }); await loadAdminMatches(); }
+    catch (err) { alert(err.response?.data?.detail || "İşlem başarısız."); }
+  };
+
+  const approvalStatusChip = (s) => {
+    if (s === "approved") return <span style={{ fontSize: "0.72rem", background: "#dcfce7", color: "#166534", borderRadius: "999px", padding: "0.15rem 0.6rem", fontWeight: 700 }}>✅ Onaylı</span>;
+    if (s === "pending_review") return <span style={{ fontSize: "0.72rem", background: "#fef9c3", color: "#713f12", borderRadius: "999px", padding: "0.15rem 0.6rem", fontWeight: 700 }}>⏳ Bekliyor</span>;
+    if (s === "rejected") return <span style={{ fontSize: "0.72rem", background: "#fee2e2", color: "#991b1b", borderRadius: "999px", padding: "0.15rem 0.6rem", fontWeight: 700 }}>❌ Reddedildi</span>;
+    return null;
   };
 
   return (
@@ -3347,15 +3358,26 @@ const AdminPage = () => {
         <span className="admin-badge">Platform Yöneticisi</span>
       </div>
 
+      {actionMsg && (
+        <div className="success mb-2" style={{ cursor: "pointer" }} onClick={() => setActionMsg("")}>
+          {actionMsg} <span style={{ float: "right", opacity: 0.5 }}>✕</span>
+        </div>
+      )}
+
       <div className="admin-tabs">
+        <div className={`admin-tab ${tab === "pending" ? "active" : ""}`} onClick={() => setTab("pending")} style={{ position: "relative" }}>
+          📋 Üyelik Talepleri
+          {pending.length > 0 && <span className="notif-dot" style={{ position: "absolute", top: 6, right: 4 }} />}
+          {` (${pending.length})`}
+        </div>
         <div className={`admin-tab ${tab === "overview" ? "active" : ""}`} onClick={() => setTab("overview")}>
           📊 Genel Bakış
         </div>
         <div className={`admin-tab ${tab === "hotels" ? "active" : ""}`} onClick={() => setTab("hotels")}>
-          🏨 Oteller ({hotels.length})
+          🏨 Tüm Oteller ({hotels.length})
         </div>
         <div className={`admin-tab ${tab === "matches" ? "active" : ""}`} onClick={() => setTab("matches")}>
-          🤝 Tüm Eşleşmeler
+          🤝 Eşleşmeler
         </div>
       </div>
 
