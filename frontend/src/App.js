@@ -591,7 +591,7 @@ const ListingsPage = () => {
                 </select>
               </label>
               <label className="field">
-                <span>Konsept / Anahtar Kelime</span>
+                <span>Konsept / Ara</span>
                 <input
                   value={filters.concept}
                   onChange={(e) => setFilters({ ...filters, concept: e.target.value })}
