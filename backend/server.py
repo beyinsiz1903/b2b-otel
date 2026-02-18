@@ -6,7 +6,7 @@ import os
 import uuid
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, APIRouter, status
+from fastapi import Depends, FastAPI, HTTPException, APIRouter, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
@@ -72,6 +72,12 @@ async def get_current_hotel(token: str = Depends(oauth2_scheme)) -> Dict[str, An
     return hotel
 
 
+async def get_current_admin(current_hotel: Dict[str, Any] = Depends(get_current_hotel)) -> Dict[str, Any]:
+    if not current_hotel.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return current_hotel
+
+
 # --- Serialization helpers --------------------------------------------------
 
 def serialize_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -119,6 +125,7 @@ class HotelCreate(HotelBase):
 class HotelPublic(HotelBase):
     id: str
     email: EmailStr
+    is_admin: bool = False
     created_at: datetime
 
 
@@ -148,6 +155,24 @@ class AvailabilityListingCreate(BaseModel):
     availability_status: str = Field(pattern="^(available|limited|alternative)$")
     image_urls: Optional[List[str]] = None
     features: Optional[List[str]] = None
+    notes: Optional[str] = None
+
+
+class AvailabilityListingUpdate(BaseModel):
+    region: Optional[str] = None
+    micro_location: Optional[str] = None
+    concept: Optional[str] = None
+    capacity_label: Optional[str] = None
+    pax: Optional[int] = None
+    date_start: Optional[datetime] = None
+    date_end: Optional[datetime] = None
+    nights: Optional[int] = None
+    price_min: Optional[float] = None
+    price_max: Optional[float] = None
+    availability_status: Optional[str] = None
+    image_urls: Optional[List[str]] = None
+    features: Optional[List[str]] = None
+    notes: Optional[str] = None
 
 
 class AvailabilityListingPublic(BaseModel):
@@ -166,9 +191,11 @@ class AvailabilityListingPublic(BaseModel):
     is_locked: bool
     image_urls: Optional[List[str]] = None
     features: Optional[List[str]] = None
+    notes: Optional[str] = None
 
 
 class AvailabilityListingMine(AvailabilityListingPublic):
+    hotel_id: str
     created_at: datetime
     updated_at: datetime
 
@@ -180,6 +207,14 @@ class RequestCreate(BaseModel):
     confirm_window_minutes: int = 120
 
 
+class AlternativePayload(BaseModel):
+    notes: Optional[str] = None
+    proposed_price_min: Optional[float] = None
+    proposed_price_max: Optional[float] = None
+    proposed_date_start: Optional[datetime] = None
+    proposed_date_end: Optional[datetime] = None
+
+
 class RequestPublic(BaseModel):
     id: str
     listing_id: str
@@ -189,6 +224,7 @@ class RequestPublic(BaseModel):
     notes: Optional[str]
     confirm_window_minutes: int
     status: str
+    alternative_payload: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -212,6 +248,11 @@ class MatchPublic(BaseModel):
     fee_status: str
     accepted_at: datetime
     created_at: datetime
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
 # --- Activity logging & counters -------------------------------------------
@@ -258,6 +299,10 @@ async def register(hotel_in: HotelCreate):
 
     hotel_id = str(uuid.uuid4())
     now = now_utc()
+    # Count hotels to determine if first user (make admin)
+    count = await db.hotels.count_documents({})
+    is_admin = count == 0  # First registered hotel is admin
+
     doc = {
         "_id": hotel_id,
         "name": hotel_in.name,
@@ -271,6 +316,7 @@ async def register(hotel_in: HotelCreate):
         "contact_person": hotel_in.contact_person,
         "email": hotel_in.email,
         "password_hash": get_password_hash(hotel_in.password),
+        "is_admin": is_admin,
         "created_at": now,
         "updated_at": now,
     }
@@ -289,6 +335,7 @@ async def register(hotel_in: HotelCreate):
         website=hotel_in.website,
         contact_person=hotel_in.contact_person,
         email=hotel_in.email,
+        is_admin=is_admin,
         created_at=now,
     )
 
@@ -317,6 +364,7 @@ async def me(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
         website=current_hotel.get("website"),
         contact_person=current_hotel.get("contact_person"),
         email=current_hotel["email"],
+        is_admin=current_hotel.get("is_admin", False),
         created_at=current_hotel["created_at"],
     )
 
@@ -325,12 +373,21 @@ async def me(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
 async def update_me(update: HotelMeUpdate, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
     updates = {k: v for k, v in update.model_dump(exclude_unset=True).items() if v is not None}
     if not updates:
-        return await me(current_hotel)  # type: ignore[arg-type]
+        return await me(current_hotel)
     updates["updated_at"] = now_utc()
     await db.hotels.update_one({"_id": current_hotel["_id"]}, {"$set": updates})
     await log_activity(current_hotel["_id"], "update_profile", "hotel", current_hotel["_id"], {"fields": list(updates.keys())})
     refreshed = await db.hotels.find_one({"_id": current_hotel["_id"]})
-    return await me(refreshed)  # type: ignore[arg-type]
+    return await me(refreshed)
+
+
+@api.post("/auth/change-password")
+async def change_password(req: ChangePasswordRequest, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    if not verify_password(req.current_password, current_hotel["password_hash"]):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mevcut şifre yanlış")
+    new_hash = get_password_hash(req.new_password)
+    await db.hotels.update_one({"_id": current_hotel["_id"]}, {"$set": {"password_hash": new_hash, "updated_at": now_utc()}})
+    return {"message": "Şifre güncellendi"}
 
 
 # --- Listings endpoints -----------------------------------------------------
@@ -356,7 +413,14 @@ async def create_listing(payload: AvailabilityListingCreate, current_hotel: Dict
     }
     await db.availability_listings.insert_one(doc)
     await log_activity(current_hotel["_id"], "create", "availability_listing", listing_id, {"status": payload.availability_status})
-    return AvailabilityListingMine(id=listing_id, **payload_dict, is_locked=False, created_at=now, updated_at=now)
+    return AvailabilityListingMine(
+        id=listing_id,
+        hotel_id=current_hotel["_id"],
+        **payload_dict,
+        is_locked=False,
+        created_at=now,
+        updated_at=now
+    )
 
 
 def listing_to_public(doc: Dict[str, Any]) -> AvailabilityListingPublic:
@@ -376,6 +440,31 @@ def listing_to_public(doc: Dict[str, Any]) -> AvailabilityListingPublic:
         is_locked=doc.get("is_locked", False),
         image_urls=doc.get("image_urls"),
         features=doc.get("features"),
+        notes=doc.get("notes"),
+    )
+
+
+def listing_to_mine(doc: Dict[str, Any]) -> AvailabilityListingMine:
+    return AvailabilityListingMine(
+        id=doc["_id"],
+        hotel_id=doc["hotel_id"],
+        region=doc["region"],
+        micro_location=doc["micro_location"],
+        concept=doc["concept"],
+        capacity_label=doc["capacity_label"],
+        pax=doc["pax"],
+        date_start=doc["date_start"],
+        date_end=doc["date_end"],
+        nights=doc["nights"],
+        price_min=doc["price_min"],
+        price_max=doc["price_max"],
+        availability_status=doc["availability_status"],
+        is_locked=doc.get("is_locked", False),
+        image_urls=doc.get("image_urls"),
+        features=doc.get("features"),
+        notes=doc.get("notes"),
+        created_at=doc["created_at"],
+        updated_at=doc["updated_at"],
     )
 
 
@@ -384,19 +473,52 @@ async def list_listings(
     region: Optional[str] = None,
     concept: Optional[str] = None,
     mine: bool = False,
+    hide_expired: bool = True,
+    pax_min: Optional[int] = None,
+    price_max: Optional[float] = None,
+    avail_status: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     current_hotel: Dict[str, Any] = Depends(get_current_hotel),
 ):
     query: Dict[str, Any] = {}
     if region:
         query["region"] = region
     if concept:
-        query["concept"] = concept
+        query["concept"] = {"$regex": concept, "$options": "i"}
     if mine:
         query["hotel_id"] = current_hotel["_id"]
+    if hide_expired and not mine:
+        query["date_end"] = {"$gte": now_utc()}
+    if pax_min is not None:
+        query["pax"] = {"$gte": pax_min}
+    if price_max is not None:
+        query["price_min"] = {"$lte": price_max}
+    if avail_status:
+        query["availability_status"] = avail_status
+    if date_from:
+        try:
+            df = datetime.fromisoformat(date_from)
+            query.setdefault("date_start", {})["$gte"] = df
+        except Exception:
+            pass
+    if date_to:
+        try:
+            dt = datetime.fromisoformat(date_to)
+            query.setdefault("date_end", {})["$lte"] = dt
+        except Exception:
+            pass
 
-    cursor = db.availability_listings.find(query)
+    cursor = db.availability_listings.find(query).sort("created_at", -1)
     docs = await cursor.to_list(length=500)
     return [listing_to_public(d) for d in docs]
+
+
+@api.get("/listings/mine", response_model=List[AvailabilityListingMine])
+async def list_mine_listings(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    cursor = db.availability_listings.find({"hotel_id": current_hotel["_id"]}).sort("created_at", -1)
+    docs = await cursor.to_list(length=500)
+    return [listing_to_mine(d) for d in docs]
 
 
 @api.get("/listings/{listing_id}")
@@ -404,9 +526,42 @@ async def get_listing(listing_id: str, current_hotel: Dict[str, Any] = Depends(g
     listing = await db.availability_listings.find_one({"_id": listing_id})
     if not listing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found")
-
-    # Always anonymous, even for owner here – owner can use mine=true list if needed
     return listing_to_public(listing)
+
+
+@api.put("/listings/{listing_id}", response_model=AvailabilityListingMine)
+async def update_listing(listing_id: str, payload: AvailabilityListingUpdate, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    listing = await db.availability_listings.find_one({"_id": listing_id})
+    if not listing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found")
+    if listing["hotel_id"] != current_hotel["_id"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to edit this listing")
+    if listing.get("is_locked"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot edit a locked listing")
+
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    if not updates:
+        return listing_to_mine(listing)
+    updates["updated_at"] = now_utc()
+    await db.availability_listings.update_one({"_id": listing_id}, {"$set": updates})
+    await log_activity(current_hotel["_id"], "update", "availability_listing", listing_id, {"fields": list(updates.keys())})
+    refreshed = await db.availability_listings.find_one({"_id": listing_id})
+    return listing_to_mine(refreshed)
+
+
+@api.delete("/listings/{listing_id}")
+async def delete_listing(listing_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    listing = await db.availability_listings.find_one({"_id": listing_id})
+    if not listing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found")
+    if listing["hotel_id"] != current_hotel["_id"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this listing")
+    if listing.get("is_locked"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete a locked listing. Cancel the pending request first.")
+
+    await db.availability_listings.delete_one({"_id": listing_id})
+    await log_activity(current_hotel["_id"], "delete", "availability_listing", listing_id, {})
+    return {"message": "Listing deleted"}
 
 
 # --- Requests & Matches -----------------------------------------------------
@@ -452,6 +607,7 @@ async def create_request(payload: RequestCreate, current_hotel: Dict[str, Any] =
         notes=payload.notes,
         confirm_window_minutes=payload.confirm_window_minutes,
         status="pending",
+        alternative_payload=None,
         created_at=now,
         updated_at=now,
     )
@@ -467,6 +623,7 @@ def request_to_public(doc: Dict[str, Any]) -> RequestPublic:
         notes=doc.get("notes"),
         confirm_window_minutes=doc["confirm_window_minutes"],
         status=doc["status"],
+        alternative_payload=doc.get("alternative_payload"),
         created_at=doc["created_at"],
         updated_at=doc["updated_at"],
     )
@@ -474,16 +631,26 @@ def request_to_public(doc: Dict[str, Any]) -> RequestPublic:
 
 @api.get("/requests/outgoing", response_model=List[RequestPublic])
 async def list_outgoing_requests(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
-    cursor = db.requests.find({"from_hotel_id": current_hotel["_id"]})
+    cursor = db.requests.find({"from_hotel_id": current_hotel["_id"]}).sort("created_at", -1)
     docs = await cursor.to_list(length=500)
     return [request_to_public(d) for d in docs]
 
 
 @api.get("/requests/incoming", response_model=List[RequestPublic])
 async def list_incoming_requests(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
-    cursor = db.requests.find({"to_hotel_id": current_hotel["_id"]})
+    cursor = db.requests.find({"to_hotel_id": current_hotel["_id"]}).sort("created_at", -1)
     docs = await cursor.to_list(length=500)
     return [request_to_public(d) for d in docs]
+
+
+@api.get("/requests/{request_id}", response_model=RequestPublic)
+async def get_request(request_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    req = await db.requests.find_one({"_id": request_id})
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+    if req["from_hotel_id"] != current_hotel["_id"] and req["to_hotel_id"] != current_hotel["_id"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this request")
+    return request_to_public(req)
 
 
 async def _get_request_for_action(req_id: str, current_hotel: Dict[str, Any]) -> Dict[str, Any]:
@@ -615,6 +782,27 @@ async def accept_alternative(request_id: str, current_hotel: Dict[str, Any] = De
     )
 
 
+@api.post("/requests/{request_id}/reject-alternative", response_model=RequestPublic)
+async def reject_alternative(request_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Requester rejects the alternative offer — unlocks listing and marks request rejected."""
+    req = await db.requests.find_one({"_id": request_id})
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+    if req["from_hotel_id"] != current_hotel["_id"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    if req["status"] != "alternative_offered":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Request is not in alternative_offered state")
+
+    now = now_utc()
+    await db.requests.update_one({"_id": req["_id"]}, {"$set": {"status": "rejected", "updated_at": now}})
+    listing = await db.availability_listings.find_one({"_id": req["listing_id"]})
+    if listing:
+        await db.availability_listings.update_one({"_id": listing["_id"]}, {"$set": {"is_locked": False, "lock_request_id": None, "updated_at": now}})
+    await log_activity(current_hotel["_id"], "reject_alternative", "request", req["_id"], None)
+    refreshed = await db.requests.find_one({"_id": req["_id"]})
+    return request_to_public(refreshed)
+
+
 @api.post("/requests/{request_id}/cancel", response_model=RequestPublic)
 async def cancel_request(request_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
     req = await db.requests.find_one({"_id": request_id})
@@ -637,7 +825,7 @@ async def cancel_request(request_id: str, current_hotel: Dict[str, Any] = Depend
 
 @api.get("/matches", response_model=List[MatchPublic])
 async def list_matches(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
-    cursor = db.matches.find({"$or": [{"hotel_a_id": current_hotel["_id"]}, {"hotel_b_id": current_hotel["_id"]}]})
+    cursor = db.matches.find({"$or": [{"hotel_a_id": current_hotel["_id"]}, {"hotel_b_id": current_hotel["_id"]}]}).sort("created_at", -1)
     docs = await cursor.to_list(length=500)
     return [
         MatchPublic(
@@ -664,9 +852,9 @@ async def get_match(match_id: str, current_hotel: Dict[str, Any] = Depends(get_c
     if current_hotel["_id"] not in {d["hotel_a_id"], d["hotel_b_id"]}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this match")
 
-    # Progressive disclosure: now reveal both hotels
     hotel_a = await db.hotels.find_one({"_id": d["hotel_a_id"]})
     hotel_b = await db.hotels.find_one({"_id": d["hotel_b_id"]})
+    listing = await db.availability_listings.find_one({"_id": d["listing_id"]})
 
     return {
         "id": d["_id"],
@@ -677,6 +865,17 @@ async def get_match(match_id: str, current_hotel: Dict[str, Any] = Depends(get_c
         "fee_status": d["fee_status"],
         "accepted_at": d["accepted_at"].isoformat(),
         "created_at": d["created_at"].isoformat(),
+        "listing_snapshot": {
+            "region": listing.get("region") if listing else None,
+            "micro_location": listing.get("micro_location") if listing else None,
+            "concept": listing.get("concept") if listing else None,
+            "capacity_label": listing.get("capacity_label") if listing else None,
+            "pax": listing.get("pax") if listing else None,
+            "date_start": listing.get("date_start").isoformat() if listing and listing.get("date_start") else None,
+            "date_end": listing.get("date_end").isoformat() if listing and listing.get("date_end") else None,
+            "nights": listing.get("nights") if listing else None,
+            "price_min": listing.get("price_min") if listing else None,
+        } if listing else None,
         "counterparty": {
             "self": serialize_doc(hotel_a if hotel_a["_id"] == current_hotel["_id"] else hotel_b),
             "other": serialize_doc(hotel_b if hotel_a["_id"] == current_hotel["_id"] else hotel_a),
@@ -684,11 +883,187 @@ async def get_match(match_id: str, current_hotel: Dict[str, Any] = Depends(get_c
     }
 
 
+# --- Stats / Reporting ------------------------------------------------------
+
+@api.get("/stats")
+async def get_stats(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    hotel_id = current_hotel["_id"]
+    now = now_utc()
+
+    # All matches
+    matches_cursor = db.matches.find({"$or": [{"hotel_a_id": hotel_id}, {"hotel_b_id": hotel_id}]})
+    matches = await matches_cursor.to_list(length=1000)
+
+    # All requests
+    outgoing_cursor = db.requests.find({"from_hotel_id": hotel_id})
+    incoming_cursor = db.requests.find({"to_hotel_id": hotel_id})
+    outgoing = await outgoing_cursor.to_list(length=1000)
+    incoming = await incoming_cursor.to_list(length=1000)
+
+    # My listings
+    listings_cursor = db.availability_listings.find({"hotel_id": hotel_id})
+    listings = await listings_cursor.to_list(length=1000)
+
+    # Monthly breakdown (last 6 months)
+    monthly_matches: Dict[str, int] = {}
+    monthly_fees: Dict[str, float] = {}
+    for m in matches:
+        if m.get("accepted_at"):
+            key = m["accepted_at"].strftime("%Y-%m")
+            monthly_matches[key] = monthly_matches.get(key, 0) + 1
+            monthly_fees[key] = monthly_fees.get(key, 0.0) + m.get("fee_amount", 0.0)
+
+    # Request stats
+    total_outgoing = len(outgoing)
+    total_incoming = len(incoming)
+    accepted_outgoing = sum(1 for r in outgoing if r["status"] == "accepted")
+    accepted_incoming = sum(1 for r in incoming if r["status"] == "accepted")
+    pending_incoming = sum(1 for r in incoming if r["status"] == "pending")
+
+    # Current month
+    current_month_key = now.strftime("%Y-%m")
+    this_month_matches = monthly_matches.get(current_month_key, 0)
+    this_month_fees = monthly_fees.get(current_month_key, 0.0)
+
+    # Total fees
+    total_fees = sum(m.get("fee_amount", 0) for m in matches)
+
+    # Active listings
+    active_listings = sum(1 for l in listings if l.get("date_end", now_utc()) >= now)
+    expired_listings = sum(1 for l in listings if l.get("date_end", now_utc()) < now)
+
+    # Region breakdown for matches
+    region_counts: Dict[str, int] = {}
+    for m in matches:
+        listing_doc = await db.availability_listings.find_one({"_id": m["listing_id"]})
+        if listing_doc:
+            r = listing_doc.get("region", "Bilinmiyor")
+            region_counts[r] = region_counts.get(r, 0) + 1
+
+    return {
+        "total_matches": len(matches),
+        "total_outgoing_requests": total_outgoing,
+        "total_incoming_requests": total_incoming,
+        "accepted_outgoing": accepted_outgoing,
+        "accepted_incoming": accepted_incoming,
+        "pending_incoming": pending_incoming,
+        "this_month_matches": this_month_matches,
+        "this_month_fees": this_month_fees,
+        "total_fees": total_fees,
+        "active_listings": active_listings,
+        "expired_listings": expired_listings,
+        "monthly_matches": monthly_matches,
+        "monthly_fees": monthly_fees,
+        "region_counts": region_counts,
+        "acceptance_rate_outgoing": round(accepted_outgoing / total_outgoing * 100, 1) if total_outgoing > 0 else 0,
+        "acceptance_rate_incoming": round(accepted_incoming / total_incoming * 100, 1) if total_incoming > 0 else 0,
+    }
+
+
+# --- Admin endpoints --------------------------------------------------------
+
+@api.get("/admin/overview")
+async def admin_overview(admin: Dict[str, Any] = Depends(get_current_admin)):
+    total_hotels = await db.hotels.count_documents({})
+    total_listings = await db.availability_listings.count_documents({})
+    total_requests = await db.requests.count_documents({})
+    total_matches = await db.matches.count_documents({})
+
+    # Fee totals
+    matches_cursor = db.matches.find({})
+    matches = await matches_cursor.to_list(length=10000)
+    total_fees = sum(m.get("fee_amount", 0) for m in matches)
+    paid_fees = sum(m.get("fee_amount", 0) for m in matches if m.get("fee_status") == "paid")
+    due_fees = sum(m.get("fee_amount", 0) for m in matches if m.get("fee_status") == "due")
+
+    # Recent activity
+    recent_logs_cursor = db.activity_logs.find({}).sort("created_at", -1).limit(20)
+    recent_logs = await recent_logs_cursor.to_list(length=20)
+    for log in recent_logs:
+        log["id"] = str(log.pop("_id"))
+        if isinstance(log.get("created_at"), datetime):
+            log["created_at"] = log["created_at"].isoformat()
+
+    return {
+        "total_hotels": total_hotels,
+        "total_listings": total_listings,
+        "total_requests": total_requests,
+        "total_matches": total_matches,
+        "total_fees": total_fees,
+        "paid_fees": paid_fees,
+        "due_fees": due_fees,
+        "recent_activity": recent_logs,
+    }
+
+
+@api.get("/admin/hotels")
+async def admin_list_hotels(admin: Dict[str, Any] = Depends(get_current_admin)):
+    cursor = db.hotels.find({}).sort("created_at", -1)
+    docs = await cursor.to_list(length=1000)
+    result = []
+    for doc in docs:
+        hotel_id = doc["_id"]
+        match_count = await db.matches.count_documents({"$or": [{"hotel_a_id": hotel_id}, {"hotel_b_id": hotel_id}]})
+        listing_count = await db.availability_listings.count_documents({"hotel_id": hotel_id})
+        result.append({
+            "id": hotel_id,
+            "name": doc["name"],
+            "email": doc["email"],
+            "region": doc["region"],
+            "concept": doc["concept"],
+            "phone": doc["phone"],
+            "is_admin": doc.get("is_admin", False),
+            "created_at": doc["created_at"].isoformat() if isinstance(doc.get("created_at"), datetime) else None,
+            "match_count": match_count,
+            "listing_count": listing_count,
+        })
+    return result
+
+
+@api.get("/admin/matches")
+async def admin_list_matches(admin: Dict[str, Any] = Depends(get_current_admin)):
+    cursor = db.matches.find({}).sort("created_at", -1).limit(200)
+    docs = await cursor.to_list(length=200)
+    result = []
+    for d in docs:
+        hotel_a = await db.hotels.find_one({"_id": d["hotel_a_id"]})
+        hotel_b = await db.hotels.find_one({"_id": d["hotel_b_id"]})
+        result.append({
+            "id": d["_id"],
+            "reference_code": d["reference_code"],
+            "hotel_a_name": hotel_a["name"] if hotel_a else "?",
+            "hotel_b_name": hotel_b["name"] if hotel_b else "?",
+            "fee_amount": d["fee_amount"],
+            "fee_status": d["fee_status"],
+            "accepted_at": d["accepted_at"].isoformat() if isinstance(d.get("accepted_at"), datetime) else None,
+        })
+    return result
+
+
+@api.put("/admin/hotels/{hotel_id}/toggle-admin")
+async def admin_toggle_admin(hotel_id: str, admin: Dict[str, Any] = Depends(get_current_admin)):
+    hotel = await db.hotels.find_one({"_id": hotel_id})
+    if not hotel:
+        raise HTTPException(status_code=404, detail="Hotel not found")
+    new_val = not hotel.get("is_admin", False)
+    await db.hotels.update_one({"_id": hotel_id}, {"$set": {"is_admin": new_val, "updated_at": now_utc()}})
+    return {"id": hotel_id, "is_admin": new_val}
+
+
+@api.put("/admin/matches/{match_id}/fee-status")
+async def admin_update_fee_status(match_id: str, body: Dict[str, str], admin: Dict[str, Any] = Depends(get_current_admin)):
+    new_status = body.get("fee_status")
+    if new_status not in ("due", "paid", "waived"):
+        raise HTTPException(status_code=400, detail="Invalid fee_status")
+    await db.matches.update_one({"_id": match_id}, {"$set": {"fee_status": new_status}})
+    return {"id": match_id, "fee_status": new_status}
+
+
 # Healthcheck / root
 
 @api.get("/")
 async def root() -> Dict[str, str]:
-    return {"message": "CapX Sapanca-Kartepe API"}
+    return {"message": "CapX Sapanca-Kartepe API v2"}
 
 
 app.include_router(api)
