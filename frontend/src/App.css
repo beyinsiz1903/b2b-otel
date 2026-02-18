@@ -742,11 +742,10 @@ a { text-decoration: none; color: inherit; }
   align-items: end;
 }
 
-.filter-actions {
-  display: flex;
-  gap: 0.75rem;
-  justify-content: flex-end;
-  margin-top: 0.5rem;
+.filter-row .field > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ===== REQUESTS TABLE ===== */
