@@ -652,9 +652,6 @@ const RegisterPage = () => {
     </div>
   );
 };
-    </div>
-  );
-};
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 const DashboardPage = () => {
