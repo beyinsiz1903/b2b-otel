@@ -513,6 +513,10 @@ def listing_to_public(doc: Dict[str, Any]) -> AvailabilityListingPublic:
         image_urls=doc.get("image_urls"),
         features=doc.get("features"),
         notes=doc.get("notes"),
+        room_type=doc.get("room_type"),
+        breakfast_included=doc.get("breakfast_included", False),
+        min_nights=doc.get("min_nights", 1),
+        guest_restrictions=doc.get("guest_restrictions"),
     )
 
 
@@ -535,6 +539,11 @@ def listing_to_mine(doc: Dict[str, Any]) -> AvailabilityListingMine:
         image_urls=doc.get("image_urls"),
         features=doc.get("features"),
         notes=doc.get("notes"),
+        room_type=doc.get("room_type"),
+        breakfast_included=doc.get("breakfast_included", False),
+        min_nights=doc.get("min_nights", 1),
+        guest_restrictions=doc.get("guest_restrictions"),
+        template_id=doc.get("template_id"),
         created_at=doc["created_at"],
         updated_at=doc["updated_at"],
     )
