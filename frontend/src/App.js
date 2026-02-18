@@ -2521,7 +2521,7 @@ const GoogleSheetsTab = () => {
     try {
       const res = await axios.get("/oauth/sheets/login");
       // Yeni sekmede aç
-      window.open(res.data.auth_url, "_self");
+      window.open(res.data.auth_url, "_blank", "noopener,noreferrer");
     } catch (e) {
       setErr(e.response?.data?.detail || "Bağlantı başlatılamadı. Önce Client ID ve Secret kaydedin.");
     }
