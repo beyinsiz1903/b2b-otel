@@ -3494,6 +3494,7 @@ const AdminPage = () => {
                 <th>Otel Adı</th>
                 <th>E-posta</th>
                 <th>Bölge</th>
+                <th>Durum</th>
                 <th>İlan</th>
                 <th>Eşleşme</th>
                 <th>Kayıt Tarihi</th>
@@ -3507,6 +3508,7 @@ const AdminPage = () => {
                   <td style={{ fontWeight: 600 }}>{h.name}</td>
                   <td style={{ fontSize: "0.82rem", color: "#6b7c93" }}>{h.email}</td>
                   <td><span className="badge-region">{h.region}</span></td>
+                  <td>{approvalStatusChip(h.approval_status)}</td>
                   <td>{h.listing_count}</td>
                   <td>{h.match_count}</td>
                   <td style={{ fontSize: "0.8rem", color: "#6b7c93" }}>
@@ -3516,13 +3518,20 @@ const AdminPage = () => {
                     {h.is_admin ? <span className="admin-badge">Admin</span> : <span className="text-muted">-</span>}
                   </td>
                   <td>
-                    <button
-                      className={`btn-sm ${h.is_admin ? "btn-danger" : "btn-secondary"}`}
-                      onClick={() => toggleAdmin(h.id)}
-                      title={h.is_admin ? "Admin yetkisini kaldır" : "Admin yap"}
-                    >
-                      {h.is_admin ? "Admin Kaldır" : "Admin Yap"}
-                    </button>
+                    <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+                      {h.approval_status !== "approved" && (
+                        <button className="btn-sm btn-primary" onClick={() => approveHotel(h.id)}>✅ Onayla</button>
+                      )}
+                      {h.approval_status === "approved" && (
+                        <button className="btn-sm btn-danger" onClick={() => { setRejectModal(h); setRejectReason(""); }}>❌ İptal</button>
+                      )}
+                      <button
+                        className={`btn-sm ${h.is_admin ? "btn-danger" : "btn-secondary"}`}
+                        onClick={() => toggleAdmin(h.id)}
+                      >
+                        {h.is_admin ? "Admin Kaldır" : "Admin Yap"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
