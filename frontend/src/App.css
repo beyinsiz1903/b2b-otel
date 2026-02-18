@@ -749,6 +749,12 @@ a { text-decoration: none; color: inherit; }
   margin-top: 0.5rem;
 }
 
+.filter-row .field > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ===== REQUESTS TABLE ===== */
 .requests-grid {
   display: grid;
