@@ -1315,27 +1315,23 @@ async def sheets_oauth_login(current_hotel: Dict[str, Any] = Depends(get_current
 async def sheets_oauth_callback(code: str, state: str):
     state_doc = await db.oauth_states.find_one({"_id": state})
     if not state_doc:
-        raise HTTPException(status_code=400, detail="Geçersiz ya da süresi dolmuş OAuth state.")
+        return _oauth_result_page("❌ Hata", "Geçersiz ya da süresi dolmuş OAuth isteği. Lütfen tekrar bağlanmayı deneyin.", success=False)
 
     hotel_id = state_doc["hotel_id"]
     config = await db.sheets_config.find_one({"hotel_id": hotel_id})
     if not config:
-        raise HTTPException(status_code=400, detail="Sheets yapılandırması bulunamadı.")
+        return _oauth_result_page("❌ Hata", "Sheets yapılandırması bulunamadı.", success=False)
 
     flow = _build_flow(config["client_id"], config["client_secret"])
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        await asyncio.to_thread(flow.fetch_token, code=code)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            await asyncio.to_thread(flow.fetch_token, code=code)
+    except Exception as e:
+        return _oauth_result_page("❌ Token Hatası", f"Google'dan token alınamadı: {str(e)}", success=False)
 
     creds = flow.credentials
-
-    # Scope kontrolü
-    granted_scopes = set(creds.scopes or [])
-    required = {"https://www.googleapis.com/auth/spreadsheets"}
-    if not required.issubset(granted_scopes):
-        missing = required - granted_scopes
-        raise HTTPException(status_code=400, detail=f"Eksik izin: {', '.join(missing)}")
 
     # Google hesap e-postasını al
     google_email = None
@@ -1361,18 +1357,58 @@ async def sheets_oauth_callback(code: str, state: str):
         },
         upsert=True,
     )
-    # Config güncelle
     await db.sheets_config.update_one(
         {"hotel_id": hotel_id},
         {"$set": {"google_email": google_email, "connected_at": now_utc()}},
     )
-    # State sil
     await db.oauth_states.delete_one({"_id": state})
     await log_activity(hotel_id, "sheets_connect", "integration", hotel_id, {"email": google_email})
 
-    # Frontend'e yönlendir
-    frontend_url = _get_frontend_url()
-    return RedirectResponse(f"{frontend_url}/profile?sheets=connected")
+    return _oauth_result_page(
+        "✅ Bağlantı Kuruldu!",
+        f"Google Sheets hesabınız ({google_email or 'bilinmiyor'}) başarıyla bağlandı.<br>Bu sekmeyi kapatıp platforma dönebilirsiniz.",
+        success=True,
+    )
+
+
+def _oauth_result_page(title: str, message: str, success: bool):
+    """OAuth sonuç sayfası — sekmeyi otomatik kapatır."""
+    from fastapi.responses import HTMLResponse
+    color = "#166534" if success else "#991b1b"
+    bg = "#dcfce7" if success else "#fee2e2"
+    icon = "✅" if success else "❌"
+    html = f"""<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>{"Bağlantı Başarılı" if success else "Bağlantı Hatası"}</title>
+  <style>
+    body{{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#f0f4f8;
+         display:flex;align-items:center;justify-content:center;min-height:100vh;}}
+    .card{{background:#fff;border-radius:1rem;padding:2.5rem 3rem;text-align:center;
+           box-shadow:0 4px 24px rgba(0,0,0,.1);max-width:480px;width:90%;}}
+    .icon{{font-size:3.5rem;margin-bottom:1rem;}}
+    h1{{color:{color};font-size:1.4rem;margin:0 0 .75rem;}}
+    p{{color:#4a5568;font-size:.95rem;line-height:1.6;margin:0 0 1.5rem;}}
+    .btn{{background:#2e6b57;color:#fff;border:none;border-radius:.6rem;
+          padding:.7rem 1.5rem;font-size:.95rem;cursor:pointer;font-family:inherit;}}
+    .note{{font-size:.78rem;color:#9ca3af;margin-top:1rem;}}
+    .timer{{font-size:.85rem;color:{color};font-weight:600;margin-bottom:1rem;}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">{icon}</div>
+    <h1>{title}</h1>
+    <p>{message}</p>
+    {"<div class='timer' id='t'>3 saniye sonra kapanıyor...</div>" if success else ""}
+    <button class="btn" onclick="window.close()">Bu Sekmeyi Kapat</button>
+    <p class="note">Sekme kapanmazsa manuel olarak kapatabilirsiniz.</p>
+  </div>
+  {"<script>let s=3;const el=document.getElementById('t');const iv=setInterval(()=>{{s--;if(el)el.textContent=s+' saniye sonra kapanıyor...';if(s<=0){{clearInterval(iv);window.close();}}}},1000);</script>" if success else ""}
+</body>
+</html>"""
+    return HTMLResponse(content=html)
 
 
 # ── Sheets Config Endpoints ─────────────────────────────────────────────────
