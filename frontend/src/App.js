@@ -1662,11 +1662,11 @@ const RoomTemplateModal = ({ template, onClose, onSaved }) => {
           </div>
         </label>
 
-        <label className="field">
-          <span>Resim URL'leri (virgülle ayır)</span>
-          <textarea name="image_urls_raw" value={form.image_urls_raw} onChange={onChange} rows={2} placeholder="https://...1.jpg, https://...2.jpg" />
-          <span className="field-help">⚠️ Logo/tabela görünen görseller kullanmayın.</span>
-        </label>
+        <ImageUploader
+          value={form.image_urls_raw}
+          onChange={(val) => setForm({ ...form, image_urls_raw: val })}
+          label="Resimler (dosyadan yükle veya URL ekle)"
+        />
         <label className="field">
           <span>Not (opsiyonel)</span>
           <textarea name="notes" value={form.notes} onChange={onChange} rows={2} placeholder="Bu oda tipi hakkında ek bilgi..." />
