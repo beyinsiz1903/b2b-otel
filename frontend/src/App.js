@@ -682,10 +682,18 @@ const ListingsPage = () => {
                   </span>
                 </div>
                 <div className="listing-body">
-                  <div style={{ fontWeight: 600, color: "#1a3a2a", fontSize: "0.95rem" }}>{l.concept}</div>
+                  <div style={{ fontWeight: 600, color: "#1a3a2a", fontSize: "0.95rem" }}>{l.room_type ? roomTypeLabel(l.room_type) : l.concept}</div>
+                  <div style={{ color: "#6b7c93", fontSize: "0.82rem" }}>{l.concept}</div>
                   <div>👥 {l.capacity_label} · {l.pax} kişi</div>
                   <div>📅 {new Date(l.date_start).toLocaleDateString("tr-TR")} – {new Date(l.date_end).toLocaleDateString("tr-TR")} ({l.nights} gece)</div>
+                  {l.min_nights > 1 && <div style={{ fontSize: "0.8rem", color: "#6b7c93" }}>⏱ Min. {l.min_nights} gece</div>}
+                  {l.breakfast_included && <div style={{ fontSize: "0.8rem", color: "#166534" }}>☕ Kahvaltı dahil</div>}
                   <div className="listing-price">{l.price_min.toLocaleString("tr-TR")} TL <span style={{ fontSize: "0.8rem", color: "#6b7c93", fontWeight: 400 }}>/gece</span></div>
+                  {l.guest_restrictions && l.guest_restrictions.length > 0 && (
+                    <div style={{ fontSize: "0.75rem", color: "#dc2626", marginTop: "0.2rem" }}>
+                      🚫 {l.guest_restrictions.slice(0, 2).join(" · ")}{l.guest_restrictions.length > 2 && "..."}
+                    </div>
+                  )}
                   {l.features && l.features.length > 0 && (
                     <div className="listing-features">
                       {l.features.slice(0, 4).map((f) => (
