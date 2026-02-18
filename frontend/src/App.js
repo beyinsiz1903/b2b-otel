@@ -2521,7 +2521,17 @@ const GoogleSheetsTab = () => {
     try {
       const res = await axios.get("/oauth/sheets/login");
       // Yeni sekmede aç
-      window.open(res.data.auth_url, "_blank", "noopener,noreferrer");
+      const popup = window.open(res.data.auth_url, "_blank", "noopener,noreferrer,width=600,height=700");
+      // Sekme kapandığında bağlantı durumunu yenile
+      const check = setInterval(async () => {
+        if (popup && popup.closed) {
+          clearInterval(check);
+          await loadConfig();
+          setMsg("Bağlantı durumu güncellendi. Yenileniyor...");
+        }
+      }, 1000);
+      // 5 dakika sonra polling'i durdur
+      setTimeout(() => clearInterval(check), 300000);
     } catch (e) {
       setErr(e.response?.data?.detail || "Bağlantı başlatılamadı. Önce Client ID ve Secret kaydedin.");
     }
