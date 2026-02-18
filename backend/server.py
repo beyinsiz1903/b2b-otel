@@ -398,17 +398,51 @@ api = APIRouter(prefix="/api")
 
 # --- Auth endpoints ---------------------------------------------------------
 
+@api.post("/auth/register-upload")
+async def register_upload(file: UploadFile = File(...)):
+    """Kayıt sırasında belge yükleme (auth gerektirmez)."""
+    allowed = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
+    mime = file.content_type or ""
+    if mime not in allowed:
+        raise HTTPException(status_code=400, detail="Sadece PDF, JPG, PNG veya WEBP yüklenebilir.")
+    contents = await file.read()
+    if len(contents) > 20 * 1024 * 1024:  # 20 MB
+        raise HTTPException(status_code=400, detail="Dosya 20 MB'dan küçük olmalıdır.")
+    import mimetypes as _mt
+    ext = Path(file.filename or "doc.pdf").suffix.lower() or ".pdf"
+    filename = f"doc_{uuid.uuid4().hex}{ext}"
+    dest = UPLOAD_DIR / "docs" / filename
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with open(dest, "wb") as f:
+        f.write(contents)
+    return {"filename": filename, "original": file.filename, "url": f"/api/files/docs/{filename}"}
+
+
+@api.get("/files/docs/{filename}")
+async def serve_doc(filename: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Belgeyi sadece admin veya belgeler kendine ait otele sun."""
+    file_path = UPLOAD_DIR / "docs" / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Dosya bulunamadı")
+    if not current_hotel.get("is_admin"):
+        # Otel kendi belgesine erişebilir
+        owner = await db.hotels.find_one({"documents": filename})
+        if not owner or owner["_id"] != current_hotel["_id"]:
+            raise HTTPException(status_code=403, detail="Yetkisiz erişim")
+    return FileResponse(str(file_path))
+
+
 @api.post("/auth/register", response_model=HotelPublic)
 async def register(hotel_in: HotelCreate):
     existing = await db.hotels.find_one({"email": hotel_in.email})
     if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bu e-posta zaten kayıtlı.")
 
     hotel_id = str(uuid.uuid4())
     now = now_utc()
-    # Count hotels to determine if first user (make admin)
     count = await db.hotels.count_documents({})
-    is_admin = count == 0  # First registered hotel is admin
+    is_admin = count == 0  # İlk kayıt admin olur ve otomatik onaylanır
+    approval_status = "approved" if is_admin else "pending_review"
 
     doc = {
         "_id": hotel_id,
@@ -424,11 +458,14 @@ async def register(hotel_in: HotelCreate):
         "email": hotel_in.email,
         "password_hash": get_password_hash(hotel_in.password),
         "is_admin": is_admin,
+        "approval_status": approval_status,
+        "rejection_reason": None,
+        "documents": hotel_in.documents or [],
         "created_at": now,
         "updated_at": now,
     }
     await db.hotels.insert_one(doc)
-    await log_activity(hotel_id, "register", "hotel", hotel_id, {})
+    await log_activity(hotel_id, "register", "hotel", hotel_id, {"approval_status": approval_status})
 
     return HotelPublic(
         id=hotel_id,
@@ -443,6 +480,7 @@ async def register(hotel_in: HotelCreate):
         contact_person=hotel_in.contact_person,
         email=hotel_in.email,
         is_admin=is_admin,
+        approval_status=approval_status,
         created_at=now,
     )
 
@@ -451,7 +489,20 @@ async def register(hotel_in: HotelCreate):
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     hotel = await db.hotels.find_one({"email": form_data.username})
     if not hotel or not verify_password(form_data.password, hotel["password_hash"]):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect email or password")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="E-posta veya şifre hatalı.")
+
+    approval = hotel.get("approval_status", "approved")
+    if approval == "pending_review":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="PENDING_REVIEW: Başvurunuz henüz incelenmektedir. Onaylandıktan sonra giriş yapabilirsiniz."
+        )
+    if approval == "rejected":
+        reason = hotel.get("rejection_reason", "")
+        detail = f"REJECTED: Başvurunuz reddedildi."
+        if reason:
+            detail += f" Sebep: {reason}"
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
     access_token = create_access_token({"sub": hotel["_id"]})
     return Token(access_token=access_token)
@@ -472,6 +523,8 @@ async def me(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
         contact_person=current_hotel.get("contact_person"),
         email=current_hotel["email"],
         is_admin=current_hotel.get("is_admin", False),
+        approval_status=current_hotel.get("approval_status", "approved"),
+        rejection_reason=current_hotel.get("rejection_reason"),
         created_at=current_hotel["created_at"],
     )
 
