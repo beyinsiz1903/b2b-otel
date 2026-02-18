@@ -799,7 +799,8 @@ const ListingDetailPage = () => {
 
         <div className="detail-header-main">
           <div>
-            <div className="detail-title-main">{listing.concept}</div>
+            <div className="detail-title-main">{listing.room_type ? roomTypeLabel(listing.room_type) : listing.concept}</div>
+            <div style={{ color: "#6b7c93", fontSize: "0.9rem" }}>{listing.concept}</div>
             <div className="detail-subtitle">{listing.region} / {listing.micro_location}</div>
             <div className="detail-meta-row">
               <span>📅 {start.toLocaleDateString("tr-TR")} – {end.toLocaleDateString("tr-TR")} ({listing.nights} gece)</span>
