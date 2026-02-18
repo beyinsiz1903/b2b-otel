@@ -336,6 +336,29 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+# --- Google Sheets Schemas --------------------------------------------------
+
+class SheetsConfigSave(BaseModel):
+    client_id: str
+    client_secret: str
+    spreadsheet_id: Optional[str] = None   # boş ise otomatik oluşturulur
+
+class SheetsConfigPublic(BaseModel):
+    hotel_id: str
+    client_id: str          # maskelenir: sadece başı gösterilir
+    spreadsheet_id: Optional[str] = None
+    connected: bool         # token var mı?
+    google_email: Optional[str] = None
+    connected_at: Optional[datetime] = None
+
+SHEETS_SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+]
+
+
 # --- Activity logging & counters -------------------------------------------
 
 async def log_activity(actor_hotel_id: str, action: str, entity: str, entity_id: str, metadata: Optional[Dict[str, Any]] = None) -> None:
