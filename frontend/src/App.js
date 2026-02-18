@@ -129,9 +129,39 @@ const statusLabel = (s) => {
 
 const FEATURES_LIST = [
   "Jakuzili","Şömine","Isıtmalı soba","Göl manzarası","Dağ manzarası",
-  "Özel bahçe","Havuz","Isıtmalı havuz","Kahvaltı dahil","Barbekü alanı",
+  "Özel bahçe","Havuz","Isıtmalı havuz","Barbekü alanı",
   "Evcil hayvan uygun","Otopark","Bebek karyolası","Engelli erişim","Spa",
+  "Özel teras","Balkon","Mutfaklı","Film köşesi","Bisiklet kiralama",
 ];
+
+const ROOM_TYPES = [
+  { value: "standart", label: "🛏 Standart Oda" },
+  { value: "suite",    label: "🌟 Süit" },
+  { value: "bungalov", label: "🏡 Bungalov" },
+  { value: "villa",    label: "🏰 Villa" },
+  { value: "apart",    label: "🏢 Apart" },
+  { value: "dag_evi",  label: "⛰ Dağ Evi" },
+  { value: "treehouse",label: "🌳 Ağaç Evi" },
+  { value: "konteyner",label: "📦 Konteyner Oda" },
+  { value: "cift_oda", label: "👫 Çift Kişilik Oda" },
+  { value: "aile_oda", label: "👨‍👩‍👧 Aile Odası" },
+];
+
+const GUEST_RESTRICTIONS_LIST = [
+  "Sadece çift",
+  "Sadece aile",
+  "18 yaş üstü",
+  "Evcil hayvan kabul edilmez",
+  "Çocuk kabul edilmez",
+  "Grup kabul edilmez",
+  "Sigara içilmez",
+  "Bekâr grubu kabul edilmez",
+];
+
+const roomTypeLabel = (val) => {
+  const found = ROOM_TYPES.find((r) => r.value === val);
+  return found ? found.label : val;
+};
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 const Layout = ({ children }) => {
