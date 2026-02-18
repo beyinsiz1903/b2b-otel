@@ -3580,6 +3580,58 @@ const AdminPage = () => {
           </table>
         </div>
       ) : null}
+
+      {/* Reddet Modal */}
+      <Modal open={!!rejectModal} onClose={() => setRejectModal(null)} title="❌ Başvuruyu Reddet" size="sm"
+        footer={
+          <>
+            <button className="btn-ghost" onClick={() => setRejectModal(null)}>İptal</button>
+            <button className="btn-danger" onClick={rejectHotel}>Reddet</button>
+          </>
+        }
+      >
+        <div style={{ fontSize: "0.9rem", color: "#374151", marginBottom: "0.75rem" }}>
+          <strong>{rejectModal?.name}</strong> adlı otelin başvurusu reddedilecek.
+        </div>
+        <label className="field">
+          <span>Red Gerekçesi (opsiyonel — otele gösterilir)</span>
+          <textarea
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            rows={3}
+            placeholder="Örn: Belgeler eksik, işletme belgesi geçersiz..."
+          />
+        </label>
+      </Modal>
+
+      {/* Belge Görüntüleme Modal */}
+      {docModal && (
+        <Modal open={true} onClose={() => setDocModal(null)} title={`📄 ${docModal.hotel.name} — Belgeler`}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {docModal.docs.map((filename, i) => {
+              const isImg = /\.(jpg|jpeg|png|webp)$/i.test(filename);
+              const url = `${process.env.REACT_APP_BACKEND_URL}/api/files/docs/${filename}`;
+              return (
+                <div key={i} style={{ border: "1px solid #e2e8f0", borderRadius: "0.75rem", overflow: "hidden" }}>
+                  {isImg ? (
+                    <img src={url} alt={`Belge ${i + 1}`} style={{ width: "100%", maxHeight: 400, objectFit: "contain", background: "#f8fafc" }} />
+                  ) : (
+                    <div style={{ padding: "1.25rem", textAlign: "center" }}>
+                      <div style={{ fontSize: "3rem", marginBottom: "0.5rem" }}>📄</div>
+                      <div style={{ fontSize: "0.85rem", color: "#6b7c93", marginBottom: "0.75rem" }}>{filename}</div>
+                    </div>
+                  )}
+                  <div style={{ padding: "0.5rem", borderTop: "1px solid #f0f4f8", textAlign: "center" }}>
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="btn-secondary btn-sm">
+                      🔗 Yeni Sekmede Aç
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Modal>
+      )}
     </Layout>
   );
 };
