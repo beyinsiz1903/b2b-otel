@@ -6,8 +6,10 @@ import os
 import uuid
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, APIRouter, status, Query
+from fastapi import Depends, FastAPI, HTTPException, APIRouter, status, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from motor.motor_asyncio import AsyncIOMotorClient
