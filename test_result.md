@@ -526,21 +526,57 @@ frontend:
         agent: "main"
         comment: "Tamamen yeniden yazıldı. Daha modern, renkli navigasyon, gradient butonlar, modal sistemi"
 
+  - task: "Envanter Yönetimi Sayfası (/inventory)"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Envanter oluşturma/düzenleme/silme, takvim görünümü, toplu müsaitlik ayarlama, özet kartları"
+
+  - task: "Fiyatlama Motoru Sayfası (/pricing)"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "4 tab: Kurallar, Hesaplayıcı, Piyasa karşılaştırması, Fiyat geçmişi"
+
+  - task: "Performans Merkezi Sayfası (/performance)"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "3 tab: Sağlık kontrolü, Benchmark (grade A-D), İndeks listesi. Sadece admin erişimi."
+
 metadata:
   created_by: "main_agent"
-  version: "2.0"
-  test_sequence: 1
+  version: "3.0"
+  test_sequence: 2
   run_ui: false
 
 test_plan:
   current_focus:
-    - "Alternatif teklif akışı (offer-alternative + accept/reject)"
-    - "İlan düzenleme ve silme"
-    - "Admin panel işlemleri"
+    - "Inventory CRUD ve bulk availability"
+    - "Pricing rules ve dynamic calculator"
+    - "Performance health ve benchmark"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
   - agent: "main"
-    message: "Büyük güncelleme tamamlandı. Backend: 10+ yeni endpoint. Frontend: 5 yeni sayfa, modal sistemi, filtreleme, alternatif teklif UI. Tüm sayfalar manuel screenshot ile kontrol edildi ve çalışıyor görünüyor. Backend test edilmesini öneririm."
+    message: "3 büyük özellik eklendi: 1) Gerçek otel envanteri (CRUD + takvim + toplu müsaitlik + overbooking engelleme + otomatik güncelleme), 2) Gelişmiş fiyatlama motoru (6 kural tipi + dinamik hesaplama + piyasa karşılaştırması + fiyat geçmişi), 3) Performans testleri (health check + benchmark + 30+ DB index). Backend manuel test edildi, tüm endpoint'ler çalışıyor. Test otel admin@test.com / Admin123"
