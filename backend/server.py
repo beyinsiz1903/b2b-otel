@@ -3026,6 +3026,635 @@ async def ensure_indexes():
         print(f"Index creation warning: {e}")
 
 
+# =============================================================================
+# --- Payment System (Mock) --------------------------------------------------
+# =============================================================================
+
+@api.post("/payments/initiate")
+@limiter.limit("10/minute")
+async def initiate_payment(request: Request, payload: PaymentInitiate, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Eşleşme için ödeme başlat (MOCK)."""
+    match = await db.matches.find_one({"_id": payload.match_id})
+    if not match:
+        raise HTTPException(status_code=404, detail="Eşleşme bulunamadı")
+    if match["hotel_a_id"] != current_hotel["_id"] and match["hotel_b_id"] != current_hotel["_id"]:
+        raise HTTPException(status_code=403, detail="Bu eşleşme size ait değil")
+    if match["fee_status"] == "paid":
+        raise HTTPException(status_code=400, detail="Bu eşleşme zaten ödenmiş")
+
+    # Mevcut ödeme var mı?
+    existing = await db.payments.find_one({"match_id": payload.match_id, "hotel_id": current_hotel["_id"], "status": {"$in": ["pending", "completed"]}})
+    if existing:
+        raise HTTPException(status_code=400, detail="Bu eşleşme için zaten bir ödeme mevcut")
+
+    payment_id = str(uuid.uuid4())
+    now = now_utc()
+    doc = {
+        "_id": payment_id,
+        "hotel_id": current_hotel["_id"],
+        "match_id": payload.match_id,
+        "amount": match["fee_amount"],
+        "currency": "TRY",
+        "status": "pending",
+        "method": payload.method,
+        "reference_code": f"PAY-{uuid.uuid4().hex[:8].upper()}",
+        "invoice_id": None,
+        "created_at": now,
+        "completed_at": None,
+    }
+    await db.payments.insert_one(doc)
+    return serialize_doc(doc)
+
+
+@api.post("/payments/{payment_id}/complete")
+async def complete_payment(payment_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Ödemeyi tamamla (MOCK - gerçek ödeme entegrasyonu yerine)."""
+    payment = await db.payments.find_one({"_id": payment_id})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Ödeme bulunamadı")
+    if payment["hotel_id"] != current_hotel["_id"]:
+        raise HTTPException(status_code=403, detail="Bu ödeme size ait değil")
+    if payment["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Bu ödeme tamamlanamaz")
+
+    now = now_utc()
+    # Fatura oluştur
+    invoice_id = await auto_create_invoice(current_hotel["_id"], payment_id, payment["match_id"], payment["amount"])
+
+    await db.payments.update_one({"_id": payment_id}, {"$set": {"status": "completed", "completed_at": now, "invoice_id": invoice_id}})
+    await db.matches.update_one({"_id": payment["match_id"]}, {"$set": {"fee_status": "paid"}})
+
+    # Bildirim
+    await create_notification(current_hotel["_id"], "payment_completed", "Ödeme Tamamlandı", f"₺{payment['amount']:.2f} tutarındaki ödemeniz başarıyla alındı.", {"payment_id": payment_id})
+
+    updated = await db.payments.find_one({"_id": payment_id})
+    return serialize_doc(updated)
+
+
+@api.get("/payments")
+async def list_payments(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Otelimin ödemeleri."""
+    cursor = db.payments.find({"hotel_id": current_hotel["_id"]}).sort("created_at", -1)
+    docs = await cursor.to_list(length=200)
+    return [serialize_doc(d) for d in docs]
+
+
+@api.get("/payments/{payment_id}")
+async def get_payment(payment_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    payment = await db.payments.find_one({"_id": payment_id})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Ödeme bulunamadı")
+    if payment["hotel_id"] != current_hotel["_id"] and not current_hotel.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Yetkisiz")
+    return serialize_doc(payment)
+
+
+# =============================================================================
+# --- Invoice System ----------------------------------------------------------
+# =============================================================================
+
+@api.get("/invoices")
+async def list_invoices(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Faturalarım."""
+    cursor = db.invoices.find({"hotel_id": current_hotel["_id"]}).sort("created_at", -1)
+    docs = await cursor.to_list(length=200)
+    return [serialize_doc(d) for d in docs]
+
+
+@api.get("/invoices/{invoice_id}")
+async def get_invoice(invoice_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    invoice = await db.invoices.find_one({"_id": invoice_id})
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Fatura bulunamadı")
+    if invoice["hotel_id"] != current_hotel["_id"] and not current_hotel.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Yetkisiz")
+    return serialize_doc(invoice)
+
+
+# =============================================================================
+# --- Subscription System -----------------------------------------------------
+# =============================================================================
+
+@api.get("/subscriptions/plans")
+async def list_subscription_plans():
+    """Mevcut abonelik planlarını listele."""
+    return SUBSCRIPTION_PLANS
+
+
+@api.post("/subscriptions/subscribe")
+async def subscribe(body: Dict[str, str], current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Bir plana abone ol."""
+    plan_id = body.get("plan_id", "free")
+    billing_cycle = body.get("billing_cycle", "monthly")
+
+    plan = next((p for p in SUBSCRIPTION_PLANS if p["id"] == plan_id), None)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Geçersiz plan")
+
+    # Mevcut aktif abonelik varsa iptal et
+    await db.subscriptions.update_many(
+        {"hotel_id": current_hotel["_id"], "status": "active"},
+        {"$set": {"status": "cancelled", "cancelled_at": now_utc()}}
+    )
+
+    now = now_utc()
+    price = plan["price_yearly"] if billing_cycle == "yearly" else plan["price_monthly"]
+    expires_at = now + timedelta(days=365 if billing_cycle == "yearly" else 30)
+
+    sub_id = str(uuid.uuid4())
+    doc = {
+        "_id": sub_id,
+        "hotel_id": current_hotel["_id"],
+        "plan_id": plan_id,
+        "plan_name": plan["name"],
+        "billing_cycle": billing_cycle,
+        "price": price,
+        "max_matches": plan["max_matches_per_month"],
+        "matches_used": 0,
+        "status": "active",
+        "started_at": now,
+        "expires_at": expires_at,
+        "cancelled_at": None,
+    }
+    await db.subscriptions.insert_one(doc)
+
+    await create_notification(current_hotel["_id"], "subscription_created", "Abonelik Aktif", f"{plan['name']} planına abone oldunuz.", {"subscription_id": sub_id})
+    return serialize_doc(doc)
+
+
+@api.get("/subscriptions/my")
+async def my_subscription(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Aktif aboneliğimi getir."""
+    sub = await db.subscriptions.find_one({"hotel_id": current_hotel["_id"], "status": "active"}, sort=[("started_at", -1)])
+    if not sub:
+        return {"plan_id": "free", "plan_name": "Ücretsiz", "max_matches": 5, "matches_used": 0, "status": "active"}
+    return serialize_doc(sub)
+
+
+@api.post("/subscriptions/cancel")
+async def cancel_subscription(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Aboneliği iptal et."""
+    sub = await db.subscriptions.find_one({"hotel_id": current_hotel["_id"], "status": "active"})
+    if not sub:
+        raise HTTPException(status_code=400, detail="Aktif abonelik yok")
+    await db.subscriptions.update_one({"_id": sub["_id"]}, {"$set": {"status": "cancelled", "cancelled_at": now_utc()}})
+    return {"message": "Abonelik iptal edildi"}
+
+
+# =============================================================================
+# --- Notification System -----------------------------------------------------
+# =============================================================================
+
+@api.get("/notifications")
+async def list_notifications(
+    limit: int = 50,
+    skip: int = 0,
+    unread_only: bool = False,
+    current_hotel: Dict[str, Any] = Depends(get_current_hotel),
+):
+    query = {"hotel_id": current_hotel["_id"]}
+    if unread_only:
+        query["is_read"] = False
+    cursor = db.notifications.find(query).sort("created_at", -1).skip(skip).limit(limit)
+    docs = await cursor.to_list(length=limit)
+    return [serialize_doc(d) for d in docs]
+
+
+@api.get("/notifications/unread-count")
+async def notification_unread_count(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    count = await db.notifications.count_documents({"hotel_id": current_hotel["_id"], "is_read": False})
+    return {"count": count}
+
+
+@api.put("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    result = await db.notifications.update_one(
+        {"_id": notification_id, "hotel_id": current_hotel["_id"]},
+        {"$set": {"is_read": True}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Bildirim bulunamadı")
+    return {"message": "Okundu olarak işaretlendi"}
+
+
+@api.put("/notifications/read-all")
+async def mark_all_notifications_read(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    await db.notifications.update_many(
+        {"hotel_id": current_hotel["_id"], "is_read": False},
+        {"$set": {"is_read": True}}
+    )
+    return {"message": "Tüm bildirimler okundu olarak işaretlendi"}
+
+
+# =============================================================================
+# --- Revenue Reports ---------------------------------------------------------
+# =============================================================================
+
+@api.get("/reports/revenue")
+async def revenue_report(
+    period: str = "monthly",
+    months: int = 6,
+    current_hotel: Dict[str, Any] = Depends(get_current_hotel),
+):
+    """Otelimin gelir raporu."""
+    now = now_utc()
+    start_date = now - timedelta(days=months * 30)
+
+    # Ödemelerim
+    payments = await db.payments.find({
+        "hotel_id": current_hotel["_id"],
+        "status": "completed",
+        "completed_at": {"$gte": start_date},
+    }).to_list(length=1000)
+
+    # Eşleşmelerim (gelir kaynağı olarak)
+    my_matches = await db.matches.find({
+        "$or": [{"hotel_a_id": current_hotel["_id"]}, {"hotel_b_id": current_hotel["_id"]}],
+        "created_at": {"$gte": start_date},
+    }).to_list(length=1000)
+
+    monthly_data = defaultdict(lambda: {"payments": 0, "payment_count": 0, "matches": 0, "revenue": 0})
+    for p in payments:
+        key = p["completed_at"].strftime("%Y-%m")
+        monthly_data[key]["payments"] += p["amount"]
+        monthly_data[key]["payment_count"] += 1
+
+    for m in my_matches:
+        key = m["created_at"].strftime("%Y-%m")
+        monthly_data[key]["matches"] += 1
+        monthly_data[key]["revenue"] += m.get("fee_amount", MATCH_FEE_TL)
+
+    total_payments = sum(p["amount"] for p in payments)
+    total_matches = len(my_matches)
+
+    return {
+        "total_payments": total_payments,
+        "total_matches": total_matches,
+        "monthly": dict(monthly_data),
+        "period_months": months,
+    }
+
+
+# =============================================================================
+# --- Market Trends -----------------------------------------------------------
+# =============================================================================
+
+@api.get("/stats/market-trends")
+async def market_trends(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Bölge bazlı talep/arz dengesi görselleştirme."""
+    now = now_utc()
+    thirty_days_ago = now - timedelta(days=30)
+
+    result = {}
+    for region_key, region_info in REGIONS.items():
+        # Aktif ilanlar (arz)
+        supply = await db.availability_listings.count_documents({
+            "region": region_key,
+            "date_end": {"$gte": now},
+        })
+        # Son 30 gündeki talepler
+        demand = await db.requests.count_documents({
+            "created_at": {"$gte": thirty_days_ago},
+        })
+        # Bölgedeki eşleşmeler
+        matches = await db.matches.count_documents({
+            "region": region_key,
+            "created_at": {"$gte": thirty_days_ago},
+        })
+        # Bölge eşleşmeleri (region alanı yoksa listing üzerinden)
+        if matches == 0:
+            listing_ids = []
+            async for l in db.availability_listings.find({"region": region_key}, {"_id": 1}):
+                listing_ids.append(l["_id"])
+            if listing_ids:
+                matches = await db.matches.count_documents({
+                    "listing_id": {"$in": listing_ids},
+                    "created_at": {"$gte": thirty_days_ago},
+                })
+
+        # Ortalama fiyat
+        pipeline = [
+            {"$match": {"region": region_key, "date_end": {"$gte": now}}},
+            {"$group": {"_id": None, "avg_price": {"$avg": "$price_min"}, "count": {"$sum": 1}}},
+        ]
+        agg = await db.availability_listings.aggregate(pipeline).to_list(length=1)
+        avg_price = agg[0]["avg_price"] if agg else 0
+
+        result[region_key] = {
+            "label": region_info["label"],
+            "supply": supply,
+            "demand": demand,
+            "matches": matches,
+            "avg_price": round(avg_price, 2),
+            "match_fee": region_info["match_fee"],
+            "balance": "dengeli" if abs(supply - demand) < 3 else ("talep_fazla" if demand > supply else "arz_fazla"),
+        }
+
+    return result
+
+
+# =============================================================================
+# --- Performance Scores ------------------------------------------------------
+# =============================================================================
+
+@api.get("/stats/performance-scores")
+async def performance_scores(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Otel performans metrikleri."""
+    hotel_id = current_hotel["_id"]
+    now = now_utc()
+    ninety_days = now - timedelta(days=90)
+
+    # Gelen talepler
+    incoming = await db.requests.find({"to_hotel_id": hotel_id, "created_at": {"$gte": ninety_days}}).to_list(length=1000)
+    total_incoming = len(incoming)
+    accepted = sum(1 for r in incoming if r["status"] == "accepted")
+    rejected = sum(1 for r in incoming if r["status"] == "rejected")
+    alternative_offered = sum(1 for r in incoming if r["status"] in ("alternative_offered",))
+    cancelled = sum(1 for r in incoming if r["status"] == "cancelled")
+    pending = sum(1 for r in incoming if r["status"] == "pending")
+
+    # Cevap süresi (ortalama)
+    response_times = []
+    for r in incoming:
+        if r["status"] not in ("pending",) and r.get("updated_at") and r.get("created_at"):
+            diff = (r["updated_at"] - r["created_at"]).total_seconds() / 3600  # saat
+            response_times.append(diff)
+    avg_response_hours = round(sum(response_times) / len(response_times), 1) if response_times else 0
+
+    # Onay oranı
+    approval_rate = round(accepted / total_incoming * 100, 1) if total_incoming > 0 else 0
+    # İptal oranı
+    cancellation_rate = round(cancelled / total_incoming * 100, 1) if total_incoming > 0 else 0
+
+    # Eşleşme sayısı
+    match_count = await db.matches.count_documents({
+        "$or": [{"hotel_a_id": hotel_id}, {"hotel_b_id": hotel_id}],
+        "created_at": {"$gte": ninety_days},
+    })
+
+    # Skor hesapla (0-100)
+    score = 50  # base
+    if approval_rate > 70:
+        score += 20
+    elif approval_rate > 40:
+        score += 10
+    if avg_response_hours < 2:
+        score += 15
+    elif avg_response_hours < 6:
+        score += 10
+    if cancellation_rate < 10:
+        score += 15
+    elif cancellation_rate < 25:
+        score += 5
+    score = min(100, max(0, score))
+
+    grade = "A" if score >= 85 else "B" if score >= 70 else "C" if score >= 50 else "D"
+
+    return {
+        "score": score,
+        "grade": grade,
+        "period_days": 90,
+        "total_incoming_requests": total_incoming,
+        "accepted": accepted,
+        "rejected": rejected,
+        "alternative_offered": alternative_offered,
+        "cancelled": cancelled,
+        "pending": pending,
+        "approval_rate": approval_rate,
+        "cancellation_rate": cancellation_rate,
+        "avg_response_hours": avg_response_hours,
+        "match_count": match_count,
+    }
+
+
+# =============================================================================
+# --- KVKK Compliance ---------------------------------------------------------
+# =============================================================================
+
+@api.get("/kvkk/export")
+async def kvkk_export_data(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """KVKK - Tüm kişisel verilerimi dışa aktar."""
+    hotel_id = current_hotel["_id"]
+
+    hotel = await db.hotels.find_one({"_id": hotel_id})
+    listings = await db.availability_listings.find({"hotel_id": hotel_id}).to_list(length=1000)
+    requests_out = await db.requests.find({"from_hotel_id": hotel_id}).to_list(length=1000)
+    requests_in = await db.requests.find({"to_hotel_id": hotel_id}).to_list(length=1000)
+    matches = await db.matches.find({"$or": [{"hotel_a_id": hotel_id}, {"hotel_b_id": hotel_id}]}).to_list(length=1000)
+    payments = await db.payments.find({"hotel_id": hotel_id}).to_list(length=500)
+    invoices = await db.invoices.find({"hotel_id": hotel_id}).to_list(length=500)
+    notifications = await db.notifications.find({"hotel_id": hotel_id}).to_list(length=500)
+
+    return {
+        "export_date": now_utc().isoformat(),
+        "hotel": serialize_doc(hotel) if hotel else None,
+        "listings_count": len(listings),
+        "listings": [serialize_doc(l) for l in listings],
+        "outgoing_requests_count": len(requests_out),
+        "outgoing_requests": [serialize_doc(r) for r in requests_out],
+        "incoming_requests_count": len(requests_in),
+        "incoming_requests": [serialize_doc(r) for r in requests_in],
+        "matches_count": len(matches),
+        "matches": [serialize_doc(m) for m in matches],
+        "payments_count": len(payments),
+        "payments": [serialize_doc(p) for p in payments],
+        "invoices_count": len(invoices),
+        "invoices": [serialize_doc(i) for i in invoices],
+        "notifications_count": len(notifications),
+    }
+
+
+@api.post("/kvkk/delete-request")
+async def kvkk_delete_request(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """KVKK - Hesap silme talebi oluştur."""
+    hotel_id = current_hotel["_id"]
+    existing = await db.kvkk_requests.find_one({"hotel_id": hotel_id, "status": "pending"})
+    if existing:
+        return {"message": "Zaten bekleyen bir silme talebiniz var", "request_id": existing["_id"]}
+
+    req_id = str(uuid.uuid4())
+    await db.kvkk_requests.insert_one({
+        "_id": req_id,
+        "hotel_id": hotel_id,
+        "type": "account_deletion",
+        "status": "pending",
+        "created_at": now_utc(),
+    })
+    await create_notification(hotel_id, "kvkk_request", "Silme Talebi Alındı", "Hesap silme talebiniz alınmıştır. 30 gün içinde işleme alınacaktır.", {"request_id": req_id})
+    return {"message": "Silme talebi oluşturuldu. 30 gün içinde işleme alınacaktır.", "request_id": req_id}
+
+
+# =============================================================================
+# --- Regions Info & Admin Region Pricing -------------------------------------
+# =============================================================================
+
+@api.get("/regions")
+async def list_regions():
+    """Tüm bölgeleri listele."""
+    result = []
+    for key, info in REGIONS.items():
+        # Admin tarafından özelleştirilmiş fiyat kontrolü
+        custom = await db.region_pricing.find_one({"_id": key})
+        fee = custom["match_fee"] if custom and "match_fee" in custom else info["match_fee"]
+        result.append({
+            "id": key,
+            "label": info["label"],
+            "prefix": info["prefix"],
+            "match_fee": fee,
+        })
+    return result
+
+
+@api.get("/admin/region-pricing")
+async def admin_get_region_pricing(admin: Dict[str, Any] = Depends(get_current_admin)):
+    """Admin: Bölge bazlı fiyatlandırma."""
+    result = []
+    for key, info in REGIONS.items():
+        custom = await db.region_pricing.find_one({"_id": key})
+        result.append({
+            "region": key,
+            "label": info["label"],
+            "default_fee": info["match_fee"],
+            "custom_fee": custom.get("match_fee") if custom else None,
+            "active_fee": custom["match_fee"] if custom and "match_fee" in custom else info["match_fee"],
+        })
+    return result
+
+
+@api.put("/admin/region-pricing/{region}")
+async def admin_update_region_pricing(region: str, body: Dict[str, Any], admin: Dict[str, Any] = Depends(get_current_admin)):
+    """Admin: Bölge eşleşme ücretini güncelle."""
+    if region not in REGIONS:
+        raise HTTPException(status_code=400, detail="Geçersiz bölge")
+    match_fee = body.get("match_fee")
+    if match_fee is None or match_fee < 0:
+        raise HTTPException(status_code=400, detail="Geçerli bir ücret girin")
+    await db.region_pricing.update_one(
+        {"_id": region},
+        {"$set": {"match_fee": float(match_fee), "updated_at": now_utc(), "updated_by": admin["_id"]}},
+        upsert=True,
+    )
+    return {"message": f"{region} bölgesi eşleşme ücreti ₺{match_fee:.2f} olarak güncellendi"}
+
+
+# =============================================================================
+# --- Admin Revenue Dashboard -------------------------------------------------
+# =============================================================================
+
+@api.get("/admin/revenue")
+async def admin_revenue(
+    months: int = 6,
+    admin: Dict[str, Any] = Depends(get_current_admin),
+):
+    """Admin: Platform gelir genel bakışı."""
+    now = now_utc()
+    start_date = now - timedelta(days=months * 30)
+
+    all_payments = await db.payments.find({
+        "status": "completed",
+        "completed_at": {"$gte": start_date},
+    }).to_list(length=5000)
+
+    all_matches = await db.matches.find({
+        "created_at": {"$gte": start_date},
+    }).to_list(length=5000)
+
+    total_revenue = sum(p["amount"] for p in all_payments)
+    total_matches = len(all_matches)
+    paid_matches = sum(1 for m in all_matches if m.get("fee_status") == "paid")
+    unpaid_matches = total_matches - paid_matches
+
+    # Aylık kırılım
+    monthly = defaultdict(lambda: {"revenue": 0, "matches": 0, "payments": 0})
+    for p in all_payments:
+        key = p["completed_at"].strftime("%Y-%m")
+        monthly[key]["revenue"] += p["amount"]
+        monthly[key]["payments"] += 1
+    for m in all_matches:
+        key = m["created_at"].strftime("%Y-%m")
+        monthly[key]["matches"] += 1
+
+    # Bölge bazlı
+    region_revenue = defaultdict(lambda: {"matches": 0, "revenue": 0})
+    for m in all_matches:
+        region = m.get("region", "Bilinmiyor")
+        region_revenue[region]["matches"] += 1
+        region_revenue[region]["revenue"] += m.get("fee_amount", MATCH_FEE_TL)
+
+    return {
+        "total_revenue": total_revenue,
+        "total_matches": total_matches,
+        "paid_matches": paid_matches,
+        "unpaid_matches": unpaid_matches,
+        "monthly": dict(monthly),
+        "region_breakdown": dict(region_revenue),
+        "period_months": months,
+    }
+
+
+@api.get("/admin/region-stats")
+async def admin_region_stats(admin: Dict[str, Any] = Depends(get_current_admin)):
+    """Admin: Bölge bazlı istatistikler."""
+    now = now_utc()
+    result = {}
+    for region_key, region_info in REGIONS.items():
+        hotels = await db.hotels.count_documents({"region": region_key})
+        active_listings = await db.availability_listings.count_documents({"region": region_key, "date_end": {"$gte": now}})
+        total_listings = await db.availability_listings.count_documents({"region": region_key})
+        result[region_key] = {
+            "label": region_info["label"],
+            "hotels": hotels,
+            "active_listings": active_listings,
+            "total_listings": total_listings,
+        }
+    return result
+
+
+# =============================================================================
+# --- Request Statistics (Enhanced) -------------------------------------------
+# =============================================================================
+
+@api.get("/stats/requests")
+async def request_statistics(
+    period_days: int = 30,
+    current_hotel: Dict[str, Any] = Depends(get_current_hotel),
+):
+    """Detaylı talep istatistikleri."""
+    hotel_id = current_hotel["_id"]
+    now = now_utc()
+    start_date = now - timedelta(days=period_days)
+
+    incoming = await db.requests.find({"to_hotel_id": hotel_id, "created_at": {"$gte": start_date}}).to_list(length=1000)
+    outgoing = await db.requests.find({"from_hotel_id": hotel_id, "created_at": {"$gte": start_date}}).to_list(length=1000)
+
+    def count_by_status(reqs):
+        counts = defaultdict(int)
+        for r in reqs:
+            counts[r["status"]] += 1
+        return dict(counts)
+
+    # Günlük kırılım
+    daily_incoming = defaultdict(int)
+    for r in incoming:
+        key = r["created_at"].strftime("%Y-%m-%d")
+        daily_incoming[key] += 1
+
+    return {
+        "period_days": period_days,
+        "incoming": {
+            "total": len(incoming),
+            "by_status": count_by_status(incoming),
+            "daily": dict(daily_incoming),
+        },
+        "outgoing": {
+            "total": len(outgoing),
+            "by_status": count_by_status(outgoing),
+        },
+        "acceptance_rate": round(sum(1 for r in incoming if r["status"] == "accepted") / len(incoming) * 100, 1) if incoming else 0,
+        "missed_rate": round(sum(1 for r in incoming if r["status"] in ("rejected", "cancelled", "expired")) / len(incoming) * 100, 1) if incoming else 0,
+    }
+
+
 # Healthcheck / root
 
 @api.get("/")
