@@ -1744,6 +1744,10 @@ const RoomTemplateModal = ({ template, onClose, onSaved }) => {
             <select name="region" value={form.region} onChange={onChange}>
               <option value="Sapanca">Sapanca</option>
               <option value="Kartepe">Kartepe</option>
+              <option value="Abant">Abant</option>
+              <option value="Ayder">Ayder</option>
+              <option value="Kas">Kaş</option>
+              <option value="Alacati">Alaçatı</option>
             </select>
           </label>
           <label className="field">
@@ -1890,6 +1894,10 @@ const EditListingModal = ({ listing, onClose, onSaved }) => {
             <select name="region" value={form.region} onChange={onChange}>
               <option value="Sapanca">Sapanca</option>
               <option value="Kartepe">Kartepe</option>
+              <option value="Abant">Abant</option>
+              <option value="Ayder">Ayder</option>
+              <option value="Kas">Kaş</option>
+              <option value="Alacati">Alaçatı</option>
             </select>
           </label>
           <label className="field">
@@ -4433,6 +4441,10 @@ const PricingPage = () => {
               <option value="">Tüm Bölgeler</option>
               <option value="Sapanca">Sapanca</option>
               <option value="Kartepe">Kartepe</option>
+              <option value="Abant">Abant</option>
+              <option value="Ayder">Ayder</option>
+              <option value="Kas">Kaş</option>
+              <option value="Alacati">Alaçatı</option>
               <option value="Maşukiye">Maşukiye</option>
             </select>
             <button className="btn-primary btn-sm" onClick={loadMarket} disabled={marketLoading}>
