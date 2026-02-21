@@ -4954,6 +4954,364 @@ const PerformancePage = () => {
   );
 };
 
+// =============================================================================
+// ── Payments Page ─────────────────────────────────────────────────────────────
+// =============================================================================
+const PaymentsPage = () => {
+  const [payments, setPayments] = React.useState([]);
+  const [matches, setMatches] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [payModal, setPayModal] = React.useState(null);
+  const [processing, setProcessing] = React.useState(false);
+  const [msg, setMsg] = React.useState("");
+
+  const load = async () => {
+    try {
+      const [pRes, mRes] = await Promise.all([
+        axios.get("/payments"),
+        axios.get("/matches"),
+      ]);
+      setPayments(pRes.data);
+      setMatches(mRes.data);
+    } catch {} finally { setLoading(false); }
+  };
+
+  React.useEffect(() => { load(); }, []);
+
+  const unpaidMatches = matches.filter((m) => m.fee_status !== "paid" && !payments.some((p) => p.match_id === m.id && p.status === "completed"));
+
+  const initiatePayment = async (matchId) => {
+    setProcessing(true); setMsg("");
+    try {
+      const res = await axios.post("/payments/initiate", { match_id: matchId, method: "credit_card" });
+      setPayModal(res.data);
+    } catch (e) { setMsg(e.response?.data?.detail || "Hata oluştu"); }
+    finally { setProcessing(false); }
+  };
+
+  const completePayment = async (paymentId) => {
+    setProcessing(true); setMsg("");
+    try {
+      await axios.post(`/payments/${paymentId}/complete`);
+      setMsg("Ödeme başarıyla tamamlandı!");
+      setPayModal(null);
+      load();
+    } catch (e) { setMsg(e.response?.data?.detail || "Hata oluştu"); }
+    finally { setProcessing(false); }
+  };
+
+  if (loading) return <Layout><div className="page-center"><span className="loading-spin" /></div></Layout>;
+
+  return (
+    <Layout>
+      <div className="page-header"><h1 className="page-title">💳 Ödemeler</h1></div>
+
+      {msg && <div className="alert" style={{ marginBottom: "1rem", padding: "0.75rem 1rem", background: msg.includes("başarı") ? "#d1fae5" : "#fee2e2", borderRadius: "0.5rem", fontSize: "0.9rem" }}>{msg}</div>}
+
+      {unpaidMatches.length > 0 && (
+        <div className="card" style={{ marginBottom: "1.5rem" }}>
+          <h3 style={{ marginBottom: "1rem" }}>⏳ Ödenmemiş Eşleşmeler</h3>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Referans</th><th>Tutar</th><th>Durum</th><th>İşlem</th></tr></thead>
+              <tbody>
+                {unpaidMatches.map((m) => (
+                  <tr key={m.id}>
+                    <td><strong>{m.reference_code}</strong></td>
+                    <td>₺{m.fee_amount?.toFixed(2)}</td>
+                    <td><span className="status-chip status-pending">Ödenmemiş</span></td>
+                    <td><button className="btn-primary btn-sm" onClick={() => initiatePayment(m.id)} disabled={processing}>Ödeme Yap</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <h3 style={{ marginBottom: "1rem" }}>📋 Ödeme Geçmişi</h3>
+        {payments.length === 0 ? (
+          <div className="empty-state"><div className="empty-state-icon">💳</div><div className="empty-state-title">Henüz ödeme yok</div></div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Referans</th><th>Tutar</th><th>Yöntem</th><th>Durum</th><th>Fatura</th><th>Tarih</th></tr></thead>
+              <tbody>
+                {payments.map((p) => (
+                  <tr key={p.id}>
+                    <td><strong>{p.reference_code}</strong></td>
+                    <td>₺{p.amount?.toFixed(2)}</td>
+                    <td>{p.method === "credit_card" ? "Kredi Kartı" : p.method}</td>
+                    <td><span className={`status-chip status-${p.status === "completed" ? "accepted" : p.status}`}>{p.status === "completed" ? "Tamamlandı" : p.status === "pending" ? "Beklemede" : p.status}</span></td>
+                    <td>{p.invoice_id ? <Link to="/invoices" style={{ color: "#2563eb" }}>Görüntüle</Link> : "-"}</td>
+                    <td>{new Date(p.created_at).toLocaleDateString("tr-TR")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Pay Modal */}
+      <Modal open={!!payModal} onClose={() => setPayModal(null)} title="Ödeme Onayı" size="sm">
+        {payModal && (
+          <div>
+            <div style={{ textAlign: "center", padding: "1.5rem 0" }}>
+              <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>💳</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#1a3a2a" }}>₺{payModal.amount?.toFixed(2)}</div>
+              <div style={{ color: "#6b7c93", margin: "0.5rem 0" }}>Ref: {payModal.reference_code}</div>
+              <p style={{ color: "#6b7c93", fontSize: "0.85rem" }}>Bu demo ödemedir. "Ödemeyi Tamamla" butonuna basarak mock ödeme yapabilirsiniz.</p>
+            </div>
+            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center" }}>
+              <button className="btn-ghost" onClick={() => setPayModal(null)}>İptal</button>
+              <button className="btn-primary" onClick={() => completePayment(payModal.id)} disabled={processing}>{processing ? "İşleniyor..." : "Ödemeyi Tamamla"}</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </Layout>
+  );
+};
+
+// =============================================================================
+// ── Invoices Page ─────────────────────────────────────────────────────────────
+// =============================================================================
+const InvoicesPage = () => {
+  const [invoices, setInvoices] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [detail, setDetail] = React.useState(null);
+
+  React.useEffect(() => {
+    const load = async () => {
+      try { const res = await axios.get("/invoices"); setInvoices(res.data); }
+      catch {} finally { setLoading(false); }
+    };
+    load();
+  }, []);
+
+  if (loading) return <Layout><div className="page-center"><span className="loading-spin" /></div></Layout>;
+
+  return (
+    <Layout>
+      <div className="page-header"><h1 className="page-title">🧾 Faturalar</h1></div>
+      {invoices.length === 0 ? (
+        <div className="empty-state"><div className="empty-state-icon">🧾</div><div className="empty-state-title">Henüz fatura yok</div><div className="empty-state-sub">Ödeme tamamlandığında faturalar burada görünecek.</div></div>
+      ) : (
+        <div className="card">
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Fatura No</th><th>Ara Toplam</th><th>KDV (%20)</th><th>Toplam</th><th>Durum</th><th>Tarih</th><th>Detay</th></tr></thead>
+              <tbody>
+                {invoices.map((inv) => (
+                  <tr key={inv.id}>
+                    <td><strong>{inv.invoice_number}</strong></td>
+                    <td>₺{inv.subtotal?.toFixed(2)}</td>
+                    <td>₺{inv.tax_amount?.toFixed(2)}</td>
+                    <td style={{ fontWeight: 600 }}>₺{inv.total?.toFixed(2)}</td>
+                    <td><span className={`status-chip status-${inv.status === "issued" ? "pending" : "accepted"}`}>{inv.status === "issued" ? "Kesildi" : "Ödendi"}</span></td>
+                    <td>{new Date(inv.created_at).toLocaleDateString("tr-TR")}</td>
+                    <td><button className="btn-ghost btn-sm" onClick={() => setDetail(inv)}>Detay</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <Modal open={!!detail} onClose={() => setDetail(null)} title={`Fatura: ${detail?.invoice_number}`} size="lg">
+        {detail && (
+          <div>
+            <div className="grid-2" style={{ gap: "1rem", marginBottom: "1.5rem" }}>
+              <div><strong>Otel:</strong> {detail.hotel_name}</div>
+              <div><strong>Adres:</strong> {detail.hotel_address}</div>
+              <div><strong>Fatura No:</strong> {detail.invoice_number}</div>
+              <div><strong>Tarih:</strong> {new Date(detail.created_at).toLocaleDateString("tr-TR")}</div>
+            </div>
+            <div className="table-wrap" style={{ marginBottom: "1rem" }}>
+              <table>
+                <thead><tr><th>Açıklama</th><th>Miktar</th><th>Birim Fiyat</th><th>Toplam</th></tr></thead>
+                <tbody>
+                  {detail.items?.map((item, i) => (
+                    <tr key={i}><td>{item.description}</td><td>{item.quantity}</td><td>₺{item.unit_price?.toFixed(2)}</td><td>₺{item.total?.toFixed(2)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ textAlign: "right", borderTop: "2px solid #e5e7eb", paddingTop: "1rem" }}>
+              <div>Ara Toplam: ₺{detail.subtotal?.toFixed(2)}</div>
+              <div>KDV (%{(detail.tax_rate * 100).toFixed(0)}): ₺{detail.tax_amount?.toFixed(2)}</div>
+              <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "#1a3a2a", marginTop: "0.5rem" }}>Genel Toplam: ₺{detail.total?.toFixed(2)}</div>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </Layout>
+  );
+};
+
+// =============================================================================
+// ── Subscription Page ─────────────────────────────────────────────────────────
+// =============================================================================
+const SubscriptionPage = () => {
+  const [plans, setPlans] = React.useState([]);
+  const [mySub, setMySub] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [msg, setMsg] = React.useState("");
+  const [processing, setProcessing] = React.useState(false);
+
+  const load = async () => {
+    try {
+      const [pRes, sRes] = await Promise.all([
+        axios.get("/subscriptions/plans"),
+        axios.get("/subscriptions/my"),
+      ]);
+      setPlans(pRes.data);
+      setMySub(sRes.data);
+    } catch {} finally { setLoading(false); }
+  };
+
+  React.useEffect(() => { load(); }, []);
+
+  const subscribe = async (planId, cycle) => {
+    setProcessing(true); setMsg("");
+    try {
+      await axios.post("/subscriptions/subscribe", { plan_id: planId, billing_cycle: cycle });
+      setMsg("Abonelik başarıyla aktifleştirildi!");
+      load();
+    } catch (e) { setMsg(e.response?.data?.detail || "Hata"); }
+    finally { setProcessing(false); }
+  };
+
+  const cancelSub = async () => {
+    if (!window.confirm("Aboneliğinizi iptal etmek istediğinize emin misiniz?")) return;
+    try {
+      await axios.post("/subscriptions/cancel");
+      setMsg("Abonelik iptal edildi.");
+      load();
+    } catch (e) { setMsg(e.response?.data?.detail || "Hata"); }
+  };
+
+  if (loading) return <Layout><div className="page-center"><span className="loading-spin" /></div></Layout>;
+
+  return (
+    <Layout>
+      <div className="page-header"><h1 className="page-title">⭐ Abonelik Planları</h1></div>
+
+      {msg && <div className="alert" style={{ marginBottom: "1rem", padding: "0.75rem 1rem", background: msg.includes("başarı") || msg.includes("aktif") ? "#d1fae5" : "#fef3c7", borderRadius: "0.5rem" }}>{msg}</div>}
+
+      {mySub && (
+        <div className="card" style={{ marginBottom: "1.5rem", borderLeft: "4px solid #10b981" }}>
+          <h3>📌 Aktif Planınız: {mySub.plan_name || "Ücretsiz"}</h3>
+          <div style={{ display: "flex", gap: "2rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
+            <div><strong>Eşleşme Limiti:</strong> {mySub.max_matches === -1 ? "Sınırsız" : `${mySub.matches_used || 0} / ${mySub.max_matches}`}</div>
+            {mySub.expires_at && <div><strong>Bitiş:</strong> {new Date(mySub.expires_at).toLocaleDateString("tr-TR")}</div>}
+            {mySub.plan_id && mySub.plan_id !== "free" && (
+              <button className="btn-ghost btn-sm" onClick={cancelSub} style={{ color: "#ef4444" }}>İptal Et</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1.5rem" }}>
+        {plans.map((plan) => (
+          <div key={plan.id} className="card" style={{ border: mySub?.plan_id === plan.id ? "2px solid #10b981" : "1px solid #e5e7eb", position: "relative" }}>
+            {mySub?.plan_id === plan.id && <div style={{ position: "absolute", top: "-10px", right: "10px", background: "#10b981", color: "white", padding: "2px 10px", borderRadius: "12px", fontSize: "0.75rem" }}>Aktif</div>}
+            <h3 style={{ marginBottom: "0.5rem" }}>{plan.name}</h3>
+            <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#1a3a2a" }}>₺{plan.price_monthly}<span style={{ fontSize: "0.8rem", fontWeight: 400, color: "#6b7c93" }}>/ay</span></div>
+            {plan.price_yearly > 0 && <div style={{ fontSize: "0.85rem", color: "#6b7c93" }}>Yıllık: ₺{plan.price_yearly}/yıl</div>}
+            <div style={{ margin: "1rem 0", fontSize: "0.85rem", color: "#374151" }}>
+              <div>📊 {plan.max_matches_per_month === -1 ? "Sınırsız" : `${plan.max_matches_per_month}`} eşleşme/ay</div>
+              {plan.features.map((f, i) => <div key={i} style={{ marginTop: "0.25rem" }}>✓ {f}</div>)}
+            </div>
+            {mySub?.plan_id !== plan.id && (
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button className="btn-primary btn-sm" onClick={() => subscribe(plan.id, "monthly")} disabled={processing}>Aylık Seç</button>
+                {plan.price_yearly > 0 && <button className="btn-ghost btn-sm" onClick={() => subscribe(plan.id, "yearly")} disabled={processing}>Yıllık Seç</button>}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </Layout>
+  );
+};
+
+// =============================================================================
+// ── Notifications Page ────────────────────────────────────────────────────────
+// =============================================================================
+const NotificationsPage = () => {
+  const [notifications, setNotifications] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [filter, setFilter] = React.useState("all");
+
+  const load = async () => {
+    try {
+      const params = filter === "unread" ? { unread_only: true } : {};
+      const res = await axios.get("/notifications", { params });
+      setNotifications(res.data);
+    } catch {} finally { setLoading(false); }
+  };
+
+  React.useEffect(() => { load(); }, [filter]);
+
+  const markRead = async (id) => {
+    try {
+      await axios.put(`/notifications/${id}/read`);
+      setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, is_read: true } : n));
+    } catch {}
+  };
+
+  const markAllRead = async () => {
+    try {
+      await axios.put("/notifications/read-all");
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    } catch {}
+  };
+
+  const typeIcon = (t) => {
+    const map = { request_received: "📋", match_created: "🤝", payment_completed: "💳", alternative_offered: "🔄", subscription_created: "⭐", kvkk_request: "🔒" };
+    return map[t] || "🔔";
+  };
+
+  if (loading) return <Layout><div className="page-center"><span className="loading-spin" /></div></Layout>;
+
+  return (
+    <Layout>
+      <div className="page-header">
+        <h1 className="page-title">🔔 Bildirimler</h1>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ padding: "0.4rem", borderRadius: "0.4rem", border: "1px solid #d1d5db" }}>
+            <option value="all">Tümü</option>
+            <option value="unread">Okunmamış</option>
+          </select>
+          <button className="btn-ghost btn-sm" onClick={markAllRead}>Tümünü Okundu Yap</button>
+        </div>
+      </div>
+
+      {notifications.length === 0 ? (
+        <div className="empty-state"><div className="empty-state-icon">🔔</div><div className="empty-state-title">Bildirim yok</div></div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {notifications.map((n) => (
+            <div key={n.id} className="card" style={{ padding: "1rem", display: "flex", gap: "1rem", alignItems: "flex-start", opacity: n.is_read ? 0.7 : 1, borderLeft: n.is_read ? "3px solid #e5e7eb" : "3px solid #2563eb", cursor: "pointer" }} onClick={() => !n.is_read && markRead(n.id)}>
+              <span style={{ fontSize: "1.5rem" }}>{typeIcon(n.type)}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>{n.title}</div>
+                <div style={{ color: "#6b7c93", fontSize: "0.85rem" }}>{n.message}</div>
+                <div style={{ color: "#9ca3af", fontSize: "0.75rem", marginTop: "0.25rem" }}>{new Date(n.created_at).toLocaleString("tr-TR")}</div>
+              </div>
+              {!n.is_read && <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#2563eb", flexShrink: 0, marginTop: "6px" }} />}
+            </div>
+          ))}
+        </div>
+      )}
+    </Layout>
+  );
+};
+
 // ── App Router ────────────────────────────────────────────────────────────────
 const App = () => (
   <AuthProvider>
