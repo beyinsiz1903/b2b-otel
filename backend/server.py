@@ -1203,6 +1203,8 @@ async def offer_alternative(request_id: str, alt: AlternativeOffer, current_hote
         {"$set": {"status": "alternative_offered", "alternative_payload": alt_payload, "updated_at": now}},
     )
     await log_activity(current_hotel["_id"], "offer_alternative", "request", req["_id"], alt_payload)
+    # Bildirim oluştur
+    await create_notification(req["from_hotel_id"], "alternative_offered", "Alternatif Teklif Aldınız", f"Talebiniz için alternatif bir teklif sunuldu.", {"request_id": req["_id"]})
     refreshed = await db.requests.find_one({"_id": req["_id"]})
     return request_to_public(refreshed)
 
