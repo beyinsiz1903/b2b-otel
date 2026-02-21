@@ -3023,6 +3023,10 @@ const ProfilePage = () => {
                   <select name="region" value={form.region} onChange={onChange}>
                     <option value="Sapanca">Sapanca</option>
                     <option value="Kartepe">Kartepe</option>
+                    <option value="Abant">Abant</option>
+                    <option value="Ayder">Ayder</option>
+                    <option value="Kas">Kaş</option>
+                    <option value="Alacati">Alaçatı</option>
                   </select>
                 </label>
               </div>
