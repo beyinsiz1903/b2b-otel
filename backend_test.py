@@ -400,7 +400,7 @@ class CapXTester:
             "date_start": tomorrow.isoformat(),
             "date_end": tomorrow.isoformat()
         }
-        response = self.make_request("POST", "/inventory/check-availability", params=check_params)
+        response = self.make_request("GET", "/inventory/check-availability", params=check_params)
         if response.status_code == 200:
             availability = response.json()
             if availability.get("min_available") == 2:
