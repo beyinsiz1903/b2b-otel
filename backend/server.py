@@ -493,6 +493,67 @@ class PriceCalculateRequest(BaseModel):
     pax: Optional[int] = None
 
 
+# --- Payment & Invoice & Subscription Schemas ------------------------------
+
+class PaymentInitiate(BaseModel):
+    match_id: str
+    method: str = "credit_card"                  # credit_card, bank_transfer, mock
+
+class PaymentPublic(BaseModel):
+    id: str
+    hotel_id: str
+    match_id: str
+    amount: float
+    currency: str = "TRY"
+    status: str                                  # pending, completed, failed, refunded
+    method: str
+    reference_code: Optional[str] = None
+    invoice_id: Optional[str] = None
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+
+class InvoicePublic(BaseModel):
+    id: str
+    hotel_id: str
+    payment_id: str
+    match_id: str
+    invoice_number: str
+    hotel_name: str
+    hotel_address: str
+    items: List[Dict[str, Any]]
+    subtotal: float
+    tax_rate: float
+    tax_amount: float
+    total: float
+    currency: str = "TRY"
+    status: str                                  # issued, paid, cancelled
+    created_at: datetime
+
+class SubscriptionPublic(BaseModel):
+    id: str
+    hotel_id: str
+    plan_id: str
+    plan_name: str
+    billing_cycle: str                           # monthly, yearly
+    price: float
+    max_matches: int
+    matches_used: int
+    status: str                                  # active, cancelled, expired
+    started_at: datetime
+    expires_at: datetime
+    cancelled_at: Optional[datetime] = None
+
+class NotificationPublic(BaseModel):
+    id: str
+    hotel_id: str
+    type: str                                    # request_received, match_created, payment_received, alternative_offered, etc.
+    title: str
+    message: str
+    is_read: bool
+    metadata: Optional[Dict[str, Any]] = None
+    created_at: datetime
+
+
 # --- Google Sheets Schemas --------------------------------------------------
 
 class SheetsConfigSave(BaseModel):
