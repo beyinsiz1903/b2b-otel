@@ -796,9 +796,15 @@ const ListingsPage = () => {
     region: "",
     concept: "",
     pax_min: "",
+    pax_max: "",
+    price_min: "",
     price_max: "",
     avail_status: "",
     hide_expired: true,
+    date_from: "",
+    date_to: "",
+    room_type: "",
+    features: "",
   });
   const navigate = useNavigate();
 
@@ -809,8 +815,14 @@ const ListingsPage = () => {
       if (f.region) params.region = f.region;
       if (f.concept) params.concept = f.concept;
       if (f.pax_min) params.pax_min = parseInt(f.pax_min);
+      if (f.pax_max) params.pax_max = parseInt(f.pax_max);
+      if (f.price_min) params.price_min = parseFloat(f.price_min);
       if (f.price_max) params.price_max = parseFloat(f.price_max);
       if (f.avail_status) params.avail_status = f.avail_status;
+      if (f.date_from) params.date_from = f.date_from;
+      if (f.date_to) params.date_to = f.date_to;
+      if (f.room_type) params.room_type = f.room_type;
+      if (f.features) params.features = f.features;
       params.hide_expired = f.hide_expired;
       const res = await axios.get("/listings", { params });
       setListings(res.data);
@@ -830,7 +842,7 @@ const ListingsPage = () => {
   };
 
   const resetFilters = () => {
-    const fresh = { region: "", concept: "", pax_min: "", price_max: "", avail_status: "", hide_expired: true };
+    const fresh = { region: "", concept: "", pax_min: "", pax_max: "", price_min: "", price_max: "", avail_status: "", hide_expired: true, date_from: "", date_to: "", room_type: "", features: "" };
     setFilters(fresh);
     load(fresh);
   };
