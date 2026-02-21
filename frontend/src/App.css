@@ -1644,6 +1644,38 @@ a { text-decoration: none; color: inherit; }
   vertical-align: middle;
 }
 
+.notification-bell {
+  position: relative;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  transition: background 0.2s;
+  text-decoration: none;
+}
+
+.notification-bell:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.notification-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #ef4444;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 3px;
+  line-height: 1;
+}
+
 /* ===== CHIPS ===== */
 .chip {
   display: inline-block;
