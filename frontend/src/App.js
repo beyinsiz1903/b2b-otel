@@ -3642,6 +3642,1230 @@ const AdminPage = () => {
   );
 };
 
+// ── Inventory Management Page ─────────────────────────────────────────────────
+
+const ROOM_TYPES_INV = [
+  { value: "standart", label: "Standart Oda" },
+  { value: "suite", label: "Suite" },
+  { value: "bungalov", label: "Bungalov" },
+  { value: "villa", label: "Villa" },
+  { value: "apart", label: "Apart" },
+  { value: "dag_evi", label: "Dağ Evi" },
+  { value: "cadir", label: "Çadır/Glamping" },
+  { value: "diger", label: "Diğer" },
+];
+
+const InventoryPage = () => {
+  const [items, setItems] = React.useState([]);
+  const [summary, setSummary] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [showCreate, setShowCreate] = React.useState(false);
+  const [editItem, setEditItem] = React.useState(null);
+  const [calendarItem, setCalendarItem] = React.useState(null);
+  const [calendarData, setCalendarData] = React.useState(null);
+  const [calendarMonth, setCalendarMonth] = React.useState(() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [bulkModal, setBulkModal] = React.useState(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState(null);
+
+  const [form, setForm] = React.useState({
+    room_type: "standart", room_type_name: "", total_rooms: 1,
+    description: "", capacity_label: "", pax: 2,
+  });
+  const [bulkForm, setBulkForm] = React.useState({
+    date_start: "", date_end: "", available_rooms: 0, price_per_night: "",
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [itemsRes, summaryRes] = await Promise.all([
+        axios.get("/inventory"),
+        axios.get("/inventory/summary/all"),
+      ]);
+      setItems(itemsRes.data);
+      setSummary(summaryRes.data);
+    } catch { }
+    setLoading(false);
+  };
+
+  React.useEffect(() => { load(); }, []);
+
+  const loadCalendar = async (invId, month) => {
+    try {
+      const res = await axios.get(`/inventory/${invId}/calendar`, { params: { month } });
+      setCalendarData(res.data);
+    } catch { }
+  };
+
+  React.useEffect(() => {
+    if (calendarItem) loadCalendar(calendarItem._id || calendarItem.id, calendarMonth);
+  }, [calendarItem, calendarMonth]);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setMsg("");
+    try {
+      await axios.post("/inventory", {
+        room_type: form.room_type,
+        room_type_name: form.room_type_name,
+        total_rooms: parseInt(form.total_rooms),
+        description: form.description || null,
+        capacity_label: form.capacity_label || null,
+        pax: parseInt(form.pax) || null,
+      });
+      setMsg("Envanter kalemi oluşturuldu!");
+      setShowCreate(false);
+      setForm({ room_type: "standart", room_type_name: "", total_rooms: 1, description: "", capacity_label: "", pax: 2 });
+      load();
+    } catch (err) {
+      setMsg(err.response?.data?.detail || "Hata oluştu");
+    }
+    setSaving(false);
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    if (!editItem) return;
+    setSaving(true);
+    try {
+      await axios.put(`/inventory/${editItem.id}`, {
+        room_type_name: form.room_type_name || undefined,
+        total_rooms: parseInt(form.total_rooms) || undefined,
+        description: form.description || undefined,
+        capacity_label: form.capacity_label || undefined,
+        pax: parseInt(form.pax) || undefined,
+      });
+      setMsg("Güncellendi!");
+      setEditItem(null);
+      load();
+    } catch (err) {
+      setMsg(err.response?.data?.detail || "Hata");
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    try {
+      await axios.delete(`/inventory/${deleteConfirm.id}`);
+      setDeleteConfirm(null);
+      load();
+    } catch { }
+  };
+
+  const handleBulkAvailability = async (e) => {
+    e.preventDefault();
+    if (!bulkModal) return;
+    setSaving(true);
+    setMsg("");
+    try {
+      const res = await axios.post("/inventory/availability/bulk", {
+        inventory_id: bulkModal.id,
+        date_start: bulkForm.date_start,
+        date_end: bulkForm.date_end,
+        available_rooms: parseInt(bulkForm.available_rooms),
+        price_per_night: bulkForm.price_per_night ? parseFloat(bulkForm.price_per_night) : null,
+      });
+      setMsg(res.data.message);
+      setBulkModal(null);
+      setBulkForm({ date_start: "", date_end: "", available_rooms: 0, price_per_night: "" });
+      load();
+      if (calendarItem && calendarItem.id === bulkModal.id) {
+        loadCalendar(calendarItem.id, calendarMonth);
+      }
+    } catch (err) {
+      setMsg(err.response?.data?.detail || "Hata");
+    }
+    setSaving(false);
+  };
+
+  const startEdit = (item) => {
+    setEditItem(item);
+    setForm({
+      room_type: item.room_type,
+      room_type_name: item.room_type_name,
+      total_rooms: item.total_rooms,
+      description: item.description || "",
+      capacity_label: item.capacity_label || "",
+      pax: item.pax || 2,
+    });
+  };
+
+  const getDayColor = (day) => {
+    if (!day.has_data) return "#f8fafc";
+    const ratio = day.total_rooms > 0 ? day.booked_rooms / day.total_rooms : 0;
+    if (ratio >= 1) return "#fee2e2";
+    if (ratio >= 0.7) return "#fef3c7";
+    if (ratio > 0) return "#dcfce7";
+    return "#f0fdf4";
+  };
+
+  if (loading) return <Layout><div className="page-loading">Yükleniyor...</div></Layout>;
+
+  return (
+    <Layout>
+      <div className="page-header">
+        <h1>📦 Envanter Yönetimi</h1>
+        <button className="btn-primary" onClick={() => setShowCreate(true)}>+ Yeni Oda Tipi</button>
+      </div>
+
+      {msg && <div className="alert" style={{ marginBottom: "1rem" }}>{msg}</div>}
+
+      {/* Özet Kartlar */}
+      {summary && summary.items.length > 0 && (
+        <div className="grid-3" style={{ marginBottom: "1.5rem" }}>
+          {summary.items.map((s) => (
+            <div key={s.inventory_id} className="card" style={{ padding: "1rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                <strong>{s.room_type_name}</strong>
+                <span className="chip">{s.room_type}</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", fontSize: "0.85rem" }}>
+                <div>Toplam Oda: <strong>{s.total_rooms}</strong></div>
+                <div>Bugün Müsait: <strong style={{ color: s.today_available > 0 ? "#166534" : "#991b1b" }}>{s.today_available}</strong></div>
+                <div>Bugün Dolu: <strong>{s.today_booked}</strong></div>
+                <div>Doluluk: <strong>{s.occupancy_rate}%</strong></div>
+                {s.today_price && <div>Bugün Fiyat: <strong>{s.today_price}₺</strong></div>}
+              </div>
+              <div style={{ width: "100%", height: "6px", background: "#e2e8f0", borderRadius: "3px", marginTop: "0.5rem" }}>
+                <div style={{
+                  width: `${Math.min(s.occupancy_rate, 100)}%`,
+                  height: "100%",
+                  background: s.occupancy_rate > 80 ? "#ef4444" : s.occupancy_rate > 50 ? "#f59e0b" : "#22c55e",
+                  borderRadius: "3px",
+                  transition: "width 0.3s ease",
+                }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Envanter Listesi */}
+      <div className="card" style={{ padding: "1.25rem" }}>
+        <h3 style={{ marginBottom: "1rem" }}>Oda Tipleri ({items.length})</h3>
+        {items.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "2rem", color: "#94a3b8" }}>
+            Henüz envanter tanımı yok. Yeni oda tipi ekleyin.
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Oda Tipi</th>
+                  <th>Ad</th>
+                  <th>Toplam</th>
+                  <th>Kapasite</th>
+                  <th>Kişi</th>
+                  <th>İşlemler</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td><span className="chip">{ROOM_TYPES_INV.find(r => r.value === item.room_type)?.label || item.room_type}</span></td>
+                    <td><strong>{item.room_type_name}</strong></td>
+                    <td>{item.total_rooms}</td>
+                    <td>{item.capacity_label || "-"}</td>
+                    <td>{item.pax || "-"}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap" }}>
+                        <button className="btn-secondary btn-sm" onClick={() => { setCalendarItem(item); }}>📅 Takvim</button>
+                        <button className="btn-secondary btn-sm" onClick={() => setBulkModal(item)}>📋 Müsaitlik</button>
+                        <button className="btn-secondary btn-sm" onClick={() => startEdit(item)}>✏️</button>
+                        <button className="btn-danger btn-sm" onClick={() => setDeleteConfirm(item)}>🗑️</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Takvim Görünümü */}
+      {calendarItem && calendarData && (
+        <div className="card" style={{ padding: "1.25rem", marginTop: "1rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+            <h3>📅 {calendarData.room_type_name} - Takvim</h3>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <button className="btn-secondary btn-sm" onClick={() => {
+                const [y, m] = calendarMonth.split("-").map(Number);
+                const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+                setCalendarMonth(prev);
+              }}>◀</button>
+              <strong>{calendarMonth}</strong>
+              <button className="btn-secondary btn-sm" onClick={() => {
+                const [y, m] = calendarMonth.split("-").map(Number);
+                const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+                setCalendarMonth(next);
+              }}>▶</button>
+              <button className="btn-ghost btn-sm" onClick={() => setCalendarItem(null)}>✕ Kapat</button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem", fontSize: "0.75rem" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: "#f0fdf4", border: "1px solid #ccc" }} /> Boş
+            </span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: "#dcfce7", border: "1px solid #ccc" }} /> Müsait
+            </span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: "#fef3c7", border: "1px solid #ccc" }} /> Az Oda
+            </span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: "#fee2e2", border: "1px solid #ccc" }} /> Dolu
+            </span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px" }}>
+            {["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"].map((d) => (
+              <div key={d} style={{ textAlign: "center", fontWeight: 600, fontSize: "0.75rem", padding: "0.25rem", color: "#64748b" }}>{d}</div>
+            ))}
+            {calendarData.days.length > 0 && (() => {
+              const firstDate = new Date(calendarData.days[0].date + "T00:00:00");
+              const dayOfWeek = firstDate.getDay();
+              const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+              const blanks = Array(offset).fill(null);
+              return [...blanks.map((_, i) => <div key={`b-${i}`} />), ...calendarData.days.map((day) => {
+                const dayNum = new Date(day.date + "T00:00:00").getDate();
+                return (
+                  <div key={day.date} style={{
+                    background: getDayColor(day),
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "4px",
+                    padding: "0.25rem",
+                    textAlign: "center",
+                    fontSize: "0.7rem",
+                    minHeight: "52px",
+                  }}>
+                    <div style={{ fontWeight: 600, fontSize: "0.8rem" }}>{dayNum}</div>
+                    {day.has_data ? (
+                      <>
+                        <div style={{ color: "#166534" }}>{day.available_rooms} müsait</div>
+                        {day.price_per_night && <div style={{ color: "#7c3aed" }}>{day.price_per_night}₺</div>}
+                      </>
+                    ) : (
+                      <div style={{ color: "#94a3b8" }}>-</div>
+                    )}
+                  </div>
+                );
+              })];
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Yeni Oda Tipi Modal */}
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Yeni Oda Tipi Ekle">
+        <form onSubmit={handleCreate}>
+          <label className="field-label">Oda Tipi</label>
+          <select className="field" value={form.room_type} onChange={(e) => setForm({ ...form, room_type: e.target.value })}>
+            {ROOM_TYPES_INV.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+          <label className="field-label">Oda Adı</label>
+          <input className="field" value={form.room_type_name} onChange={(e) => setForm({ ...form, room_type_name: e.target.value })} placeholder="Göl Manzaralı Bungalov" required />
+          <label className="field-label">Toplam Oda Sayısı</label>
+          <input className="field" type="number" min={1} value={form.total_rooms} onChange={(e) => setForm({ ...form, total_rooms: e.target.value })} required />
+          <label className="field-label">Kapasite Etiketi (2+1, 3+1 vb.)</label>
+          <input className="field" value={form.capacity_label} onChange={(e) => setForm({ ...form, capacity_label: e.target.value })} placeholder="2+1" />
+          <label className="field-label">Kişi Sayısı</label>
+          <input className="field" type="number" min={1} value={form.pax} onChange={(e) => setForm({ ...form, pax: e.target.value })} />
+          <label className="field-label">Açıklama</label>
+          <textarea className="field" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+            <button type="button" className="btn-secondary" onClick={() => setShowCreate(false)}>İptal</button>
+            <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Kaydediliyor..." : "Kaydet"}</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Düzenle Modal */}
+      <Modal open={!!editItem} onClose={() => setEditItem(null)} title="Oda Tipini Düzenle">
+        <form onSubmit={handleUpdate}>
+          <label className="field-label">Oda Adı</label>
+          <input className="field" value={form.room_type_name} onChange={(e) => setForm({ ...form, room_type_name: e.target.value })} required />
+          <label className="field-label">Toplam Oda Sayısı</label>
+          <input className="field" type="number" min={1} value={form.total_rooms} onChange={(e) => setForm({ ...form, total_rooms: e.target.value })} required />
+          <label className="field-label">Kapasite Etiketi</label>
+          <input className="field" value={form.capacity_label} onChange={(e) => setForm({ ...form, capacity_label: e.target.value })} />
+          <label className="field-label">Kişi Sayısı</label>
+          <input className="field" type="number" min={1} value={form.pax} onChange={(e) => setForm({ ...form, pax: e.target.value })} />
+          <label className="field-label">Açıklama</label>
+          <textarea className="field" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+            <button type="button" className="btn-secondary" onClick={() => setEditItem(null)}>İptal</button>
+            <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Kaydediliyor..." : "Güncelle"}</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Toplu Müsaitlik Modal */}
+      <Modal open={!!bulkModal} onClose={() => setBulkModal(null)} title={`Müsaitlik Ayarla — ${bulkModal?.room_type_name || ""}`}>
+        <form onSubmit={handleBulkAvailability}>
+          <label className="field-label">Başlangıç Tarihi</label>
+          <input className="field" type="date" value={bulkForm.date_start} onChange={(e) => setBulkForm({ ...bulkForm, date_start: e.target.value })} required />
+          <label className="field-label">Bitiş Tarihi</label>
+          <input className="field" type="date" value={bulkForm.date_end} onChange={(e) => setBulkForm({ ...bulkForm, date_end: e.target.value })} required />
+          <label className="field-label">Müsait Oda Sayısı (max: {bulkModal?.total_rooms})</label>
+          <input className="field" type="number" min={0} max={bulkModal?.total_rooms || 99} value={bulkForm.available_rooms}
+            onChange={(e) => setBulkForm({ ...bulkForm, available_rooms: e.target.value })} required />
+          <label className="field-label">Gecelik Fiyat (₺, opsiyonel)</label>
+          <input className="field" type="number" min={0} step="0.01" value={bulkForm.price_per_night}
+            onChange={(e) => setBulkForm({ ...bulkForm, price_per_night: e.target.value })} placeholder="Boş bırakılabilir" />
+          <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+            <button type="button" className="btn-secondary" onClick={() => setBulkModal(null)}>İptal</button>
+            <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Kaydediliyor..." : "Uygula"}</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Silme Onay */}
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title="Oda Tipini Sil"
+        message={`"${deleteConfirm?.room_type_name}" oda tipini ve tüm müsaitlik verilerini silmek istediğinize emin misiniz?`}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteConfirm(null)}
+      />
+    </Layout>
+  );
+};
+
+// ── Pricing Engine Page ──────────────────────────────────────────────────────
+
+const RULE_TYPES = [
+  { value: "seasonal", label: "Sezon", icon: "🌞" },
+  { value: "weekend", label: "Hafta Sonu", icon: "📅" },
+  { value: "occupancy", label: "Doluluk", icon: "📊" },
+  { value: "early_bird", label: "Erken Rezervasyon", icon: "🐦" },
+  { value: "last_minute", label: "Son Dakika", icon: "⏰" },
+  { value: "holiday", label: "Tatil/Bayram", icon: "🎉" },
+];
+
+const PricingPage = () => {
+  const [rules, setRules] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showCreate, setShowCreate] = React.useState(false);
+  const [editRule, setEditRule] = React.useState(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState(null);
+  const [msg, setMsg] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [tab, setTab] = React.useState("rules");
+
+  // Calculator state
+  const [calcForm, setCalcForm] = React.useState({
+    room_type: "standart", date_start: "", date_end: "", base_price: "",
+  });
+  const [calcResult, setCalcResult] = React.useState(null);
+  const [calcLoading, setCalcLoading] = React.useState(false);
+
+  // Market comparison state
+  const [marketData, setMarketData] = React.useState(null);
+  const [marketRoom, setMarketRoom] = React.useState("");
+  const [marketRegion, setMarketRegion] = React.useState("");
+  const [marketLoading, setMarketLoading] = React.useState(false);
+
+  // Price history
+  const [historyData, setHistoryData] = React.useState(null);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
+
+  const defaultRule = {
+    name: "", rule_type: "seasonal", room_type: "", multiplier: 1.0,
+    date_start: "", date_end: "", occupancy_threshold_min: "", occupancy_threshold_max: "",
+    days_before_min: "", days_before_max: "", weekend_days: [5, 6],
+    is_active: true, priority: 0,
+  };
+  const [ruleForm, setRuleForm] = React.useState(defaultRule);
+
+  const loadRules = async () => {
+    try {
+      const res = await axios.get("/pricing/rules");
+      setRules(res.data);
+    } catch { }
+    setLoading(false);
+  };
+
+  React.useEffect(() => { loadRules(); }, []);
+
+  const handleCreateRule = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setMsg("");
+    try {
+      const payload = {
+        name: ruleForm.name,
+        rule_type: ruleForm.rule_type,
+        multiplier: parseFloat(ruleForm.multiplier),
+        room_type: ruleForm.room_type || null,
+        is_active: ruleForm.is_active,
+        priority: parseInt(ruleForm.priority) || 0,
+      };
+      if (ruleForm.rule_type === "seasonal" || ruleForm.rule_type === "holiday") {
+        payload.date_start = ruleForm.date_start || null;
+        payload.date_end = ruleForm.date_end || null;
+      }
+      if (ruleForm.rule_type === "occupancy") {
+        payload.occupancy_threshold_min = ruleForm.occupancy_threshold_min ? parseFloat(ruleForm.occupancy_threshold_min) : null;
+        payload.occupancy_threshold_max = ruleForm.occupancy_threshold_max ? parseFloat(ruleForm.occupancy_threshold_max) : null;
+      }
+      if (ruleForm.rule_type === "early_bird" || ruleForm.rule_type === "last_minute") {
+        payload.days_before_min = ruleForm.days_before_min ? parseInt(ruleForm.days_before_min) : null;
+        payload.days_before_max = ruleForm.days_before_max ? parseInt(ruleForm.days_before_max) : null;
+      }
+      if (ruleForm.rule_type === "weekend") {
+        payload.weekend_days = ruleForm.weekend_days;
+      }
+
+      if (editRule) {
+        await axios.put(`/pricing/rules/${editRule.id}`, payload);
+        setMsg("Kural güncellendi!");
+      } else {
+        await axios.post("/pricing/rules", payload);
+        setMsg("Kural oluşturuldu!");
+      }
+      setShowCreate(false);
+      setEditRule(null);
+      setRuleForm(defaultRule);
+      loadRules();
+    } catch (err) {
+      setMsg(err.response?.data?.detail || "Hata oluştu");
+    }
+    setSaving(false);
+  };
+
+  const handleDeleteRule = async () => {
+    if (!deleteConfirm) return;
+    try {
+      await axios.delete(`/pricing/rules/${deleteConfirm.id}`);
+      setDeleteConfirm(null);
+      loadRules();
+    } catch { }
+  };
+
+  const handleCalculate = async (e) => {
+    e.preventDefault();
+    setCalcLoading(true);
+    setCalcResult(null);
+    try {
+      const res = await axios.post("/pricing/calculate", {
+        room_type: calcForm.room_type,
+        date_start: calcForm.date_start,
+        date_end: calcForm.date_end,
+        base_price: parseFloat(calcForm.base_price),
+      });
+      setCalcResult(res.data);
+    } catch (err) {
+      setMsg(err.response?.data?.detail || "Hesaplama hatası");
+    }
+    setCalcLoading(false);
+  };
+
+  const loadMarket = async () => {
+    setMarketLoading(true);
+    try {
+      const params = {};
+      if (marketRoom) params.room_type = marketRoom;
+      if (marketRegion) params.region = marketRegion;
+      const res = await axios.get("/pricing/market-comparison", { params });
+      setMarketData(res.data);
+    } catch { }
+    setMarketLoading(false);
+  };
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await axios.get("/pricing/history", { params: { months: 6 } });
+      setHistoryData(res.data);
+    } catch { }
+    setHistoryLoading(false);
+  };
+
+  const startEditRule = (rule) => {
+    setEditRule(rule);
+    setRuleForm({
+      name: rule.name,
+      rule_type: rule.rule_type,
+      room_type: rule.room_type || "",
+      multiplier: rule.multiplier,
+      date_start: rule.date_start || "",
+      date_end: rule.date_end || "",
+      occupancy_threshold_min: rule.occupancy_threshold_min ?? "",
+      occupancy_threshold_max: rule.occupancy_threshold_max ?? "",
+      days_before_min: rule.days_before_min ?? "",
+      days_before_max: rule.days_before_max ?? "",
+      weekend_days: rule.weekend_days || [5, 6],
+      is_active: rule.is_active,
+      priority: rule.priority,
+    });
+    setShowCreate(true);
+  };
+
+  const multiplierLabel = (m) => {
+    if (m > 1) return `+${Math.round((m - 1) * 100)}%`;
+    if (m < 1) return `-${Math.round((1 - m) * 100)}%`;
+    return "Değişiklik yok";
+  };
+
+  return (
+    <Layout>
+      <div className="page-header">
+        <h1>💰 Fiyatlama Motoru</h1>
+      </div>
+
+      {msg && <div className="alert" style={{ marginBottom: "1rem" }}>{msg}</div>}
+
+      {/* Tabs */}
+      <div className="tab-bar" style={{ marginBottom: "1rem" }}>
+        <button className={`tab-btn ${tab === "rules" ? "active" : ""}`} onClick={() => setTab("rules")}>📋 Kurallar</button>
+        <button className={`tab-btn ${tab === "calculator" ? "active" : ""}`} onClick={() => setTab("calculator")}>🧮 Hesaplayıcı</button>
+        <button className={`tab-btn ${tab === "market" ? "active" : ""}`} onClick={() => { setTab("market"); if (!marketData) loadMarket(); }}>📊 Piyasa</button>
+        <button className={`tab-btn ${tab === "history" ? "active" : ""}`} onClick={() => { setTab("history"); if (!historyData) loadHistory(); }}>📈 Geçmiş</button>
+      </div>
+
+      {/* Kurallar Tab */}
+      {tab === "rules" && (
+        <div className="card" style={{ padding: "1.25rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+            <h3>Fiyatlama Kuralları ({rules.length})</h3>
+            <button className="btn-primary btn-sm" onClick={() => { setEditRule(null); setRuleForm(defaultRule); setShowCreate(true); }}>+ Yeni Kural</button>
+          </div>
+
+          {rules.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "2rem", color: "#94a3b8" }}>
+              Henüz fiyatlama kuralı yok. Sezon, hafta sonu veya doluluk bazlı kurallar ekleyebilirsiniz.
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Kural Adı</th>
+                    <th>Tip</th>
+                    <th>Çarpan</th>
+                    <th>Oda Tipi</th>
+                    <th>Durum</th>
+                    <th>Öncelik</th>
+                    <th>İşlem</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rules.map((rule) => {
+                    const rt = RULE_TYPES.find(r => r.value === rule.rule_type);
+                    return (
+                      <tr key={rule.id}>
+                        <td><strong>{rule.name}</strong></td>
+                        <td>{rt ? `${rt.icon} ${rt.label}` : rule.rule_type}</td>
+                        <td>
+                          <span style={{
+                            color: rule.multiplier > 1 ? "#dc2626" : rule.multiplier < 1 ? "#16a34a" : "#64748b",
+                            fontWeight: 600,
+                          }}>
+                            x{rule.multiplier} ({multiplierLabel(rule.multiplier)})
+                          </span>
+                        </td>
+                        <td>{rule.room_type || "Tümü"}</td>
+                        <td>
+                          <span className={`chip ${rule.is_active ? "chip-green" : "chip-gray"}`}>
+                            {rule.is_active ? "Aktif" : "Pasif"}
+                          </span>
+                        </td>
+                        <td>{rule.priority}</td>
+                        <td>
+                          <div style={{ display: "flex", gap: "0.3rem" }}>
+                            <button className="btn-secondary btn-sm" onClick={() => startEditRule(rule)}>✏️</button>
+                            <button className="btn-danger btn-sm" onClick={() => setDeleteConfirm(rule)}>🗑️</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Hesaplayıcı Tab */}
+      {tab === "calculator" && (
+        <div className="card" style={{ padding: "1.25rem" }}>
+          <h3 style={{ marginBottom: "1rem" }}>🧮 Dinamik Fiyat Hesaplayıcı</h3>
+          <form onSubmit={handleCalculate} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+            <div>
+              <label className="field-label">Oda Tipi</label>
+              <select className="field" value={calcForm.room_type} onChange={(e) => setCalcForm({ ...calcForm, room_type: e.target.value })}>
+                {ROOM_TYPES_INV.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="field-label">Baz Fiyat (₺/gece)</label>
+              <input className="field" type="number" min={0} step="0.01" value={calcForm.base_price}
+                onChange={(e) => setCalcForm({ ...calcForm, base_price: e.target.value })} required />
+            </div>
+            <div>
+              <label className="field-label">Başlangıç</label>
+              <input className="field" type="date" value={calcForm.date_start}
+                onChange={(e) => setCalcForm({ ...calcForm, date_start: e.target.value })} required />
+            </div>
+            <div>
+              <label className="field-label">Bitiş</label>
+              <input className="field" type="date" value={calcForm.date_end}
+                onChange={(e) => setCalcForm({ ...calcForm, date_end: e.target.value })} required />
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <button type="submit" className="btn-primary" disabled={calcLoading}>{calcLoading ? "Hesaplanıyor..." : "Hesapla"}</button>
+            </div>
+          </form>
+
+          {calcResult && (
+            <div style={{ marginTop: "1.25rem" }}>
+              <div className="grid-3" style={{ marginBottom: "1rem" }}>
+                <div className="card" style={{ padding: "1rem", textAlign: "center", background: "#f0fdf4" }}>
+                  <div style={{ fontSize: "0.8rem", color: "#64748b" }}>Toplam Fiyat</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#166534" }}>{calcResult.total_price}₺</div>
+                </div>
+                <div className="card" style={{ padding: "1rem", textAlign: "center", background: "#eff6ff" }}>
+                  <div style={{ fontSize: "0.8rem", color: "#64748b" }}>Ort. Gece</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#1e40af" }}>{calcResult.average_price}₺</div>
+                </div>
+                <div className="card" style={{ padding: "1rem", textAlign: "center", background: "#faf5ff" }}>
+                  <div style={{ fontSize: "0.8rem", color: "#64748b" }}>Gece Sayısı</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#7c3aed" }}>{calcResult.night_count}</div>
+                </div>
+              </div>
+
+              <h4 style={{ marginBottom: "0.5rem" }}>Günlük Dağılım</h4>
+              <div className="table-wrap" style={{ maxHeight: "300px", overflowY: "auto" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Tarih</th>
+                      <th>Baz Fiyat</th>
+                      <th>Son Fiyat</th>
+                      <th>Çarpan</th>
+                      <th>Uygulanan Kurallar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {calcResult.daily_breakdown.map((d) => (
+                      <tr key={d.date}>
+                        <td>{d.date}</td>
+                        <td>{d.base_price}₺</td>
+                        <td style={{ fontWeight: 600, color: d.final_price > d.base_price ? "#dc2626" : d.final_price < d.base_price ? "#16a34a" : "#1e293b" }}>
+                          {d.final_price}₺
+                        </td>
+                        <td>x{d.final_multiplier}</td>
+                        <td>
+                          {d.applied_rules.length === 0 ? <span style={{ color: "#94a3b8" }}>-</span> :
+                            d.applied_rules.map(r => <span key={r.rule_id} className="chip" style={{ marginRight: "0.25rem" }}>{r.name}</span>)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Piyasa Tab */}
+      {tab === "market" && (
+        <div className="card" style={{ padding: "1.25rem" }}>
+          <h3 style={{ marginBottom: "1rem" }}>📊 Piyasa Karşılaştırması</h3>
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+            <select className="field" style={{ width: "auto" }} value={marketRoom} onChange={(e) => setMarketRoom(e.target.value)}>
+              <option value="">Tüm Oda Tipleri</option>
+              {ROOM_TYPES_INV.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+            <select className="field" style={{ width: "auto" }} value={marketRegion} onChange={(e) => setMarketRegion(e.target.value)}>
+              <option value="">Tüm Bölgeler</option>
+              <option value="Sapanca">Sapanca</option>
+              <option value="Kartepe">Kartepe</option>
+              <option value="Maşukiye">Maşukiye</option>
+            </select>
+            <button className="btn-primary btn-sm" onClick={loadMarket} disabled={marketLoading}>
+              {marketLoading ? "Yükleniyor..." : "Karşılaştır"}
+            </button>
+          </div>
+
+          {marketData && (
+            <div>
+              <div className="grid-3" style={{ marginBottom: "1rem" }}>
+                <div className="card" style={{ padding: "1rem", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.8rem", color: "#64748b" }}>Piyasa Ort. (min)</div>
+                  <div style={{ fontSize: "1.3rem", fontWeight: 700 }}>{marketData.avg_price_min ? `${marketData.avg_price_min}₺` : "-"}</div>
+                </div>
+                <div className="card" style={{ padding: "1rem", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.8rem", color: "#64748b" }}>Sizin Ort.</div>
+                  <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "#7c3aed" }}>{marketData.my_avg_price ? `${marketData.my_avg_price}₺` : "-"}</div>
+                </div>
+                <div className="card" style={{ padding: "1rem", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.8rem", color: "#64748b" }}>İlan Sayısı</div>
+                  <div style={{ fontSize: "1.3rem", fontWeight: 700 }}>{marketData.sample_size}</div>
+                </div>
+              </div>
+
+              {marketData.min_price && marketData.max_price && (
+                <div style={{ background: "#f8fafc", padding: "1rem", borderRadius: "0.5rem", marginBottom: "1rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+                    <span>Min: {marketData.min_price}₺</span>
+                    <span>Medyan: {marketData.median_price}₺</span>
+                    <span>Max: {marketData.max_price}₺</span>
+                  </div>
+                  <div style={{ width: "100%", height: "8px", background: "#e2e8f0", borderRadius: "4px", position: "relative" }}>
+                    {marketData.my_avg_price && (
+                      <div style={{
+                        position: "absolute",
+                        left: `${Math.min(((marketData.my_avg_price - marketData.min_price) / (marketData.max_price - marketData.min_price)) * 100, 100)}%`,
+                        top: "-4px",
+                        width: "16px", height: "16px",
+                        background: "#7c3aed", borderRadius: "50%", border: "2px solid #fff",
+                        transform: "translateX(-50%)",
+                      }} title={`Sizin fiyatınız: ${marketData.my_avg_price}₺`} />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="alert" style={{
+                background: marketData.recommendation.includes("indirim") ? "#fef3c7" :
+                  marketData.recommendation.includes("artış") ? "#dcfce7" : "#eff6ff",
+                borderLeft: "4px solid",
+                borderLeftColor: marketData.recommendation.includes("indirim") ? "#f59e0b" :
+                  marketData.recommendation.includes("artış") ? "#22c55e" : "#3b82f6",
+              }}>
+                💡 <strong>Öneri:</strong> {marketData.recommendation}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Geçmiş Tab */}
+      {tab === "history" && (
+        <div className="card" style={{ padding: "1.25rem" }}>
+          <h3 style={{ marginBottom: "1rem" }}>📈 Fiyat Geçmişi (Son 6 Ay)</h3>
+          {historyLoading ? <div>Yükleniyor...</div> : historyData && historyData.history.length > 0 ? (
+            <div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Ay</th>
+                      <th>Ort. Min Fiyat</th>
+                      <th>Ort. Max Fiyat</th>
+                      <th>İlan Sayısı</th>
+                      <th>En Düşük</th>
+                      <th>En Yüksek</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyData.history.map((h) => (
+                      <tr key={h.month}>
+                        <td><strong>{h.month}</strong></td>
+                        <td>{h.avg_price_min}₺</td>
+                        <td>{h.avg_price_max}₺</td>
+                        <td>{h.listing_count}</td>
+                        <td style={{ color: "#16a34a" }}>{h.min_price}₺</td>
+                        <td style={{ color: "#dc2626" }}>{h.max_price}₺</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Simple bar chart */}
+              <div style={{ marginTop: "1.25rem" }}>
+                <h4 style={{ marginBottom: "0.5rem" }}>Fiyat Trendi</h4>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: "0.5rem", height: "150px" }}>
+                  {historyData.history.map((h) => {
+                    const maxPrice = Math.max(...historyData.history.map(x => x.avg_price_max));
+                    const pct = maxPrice > 0 ? Math.max((h.avg_price_max / maxPrice) * 100, 5) : 5;
+                    return (
+                      <div key={h.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <div style={{ fontSize: "0.7rem", marginBottom: "0.25rem" }}>{h.avg_price_max}₺</div>
+                        <div style={{
+                          width: "100%", height: `${pct}%`,
+                          background: "linear-gradient(to top, #7c3aed, #a78bfa)",
+                          borderRadius: "4px 4px 0 0",
+                          minHeight: "4px",
+                        }} />
+                        <div style={{ fontSize: "0.65rem", marginTop: "0.25rem", color: "#64748b" }}>{h.month.split("-")[1]}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "2rem", color: "#94a3b8" }}>Henüz fiyat geçmişi yok.</div>
+          )}
+        </div>
+      )}
+
+      {/* Kural Oluştur/Düzenle Modal */}
+      <Modal open={showCreate} onClose={() => { setShowCreate(false); setEditRule(null); }} title={editRule ? "Kuralı Düzenle" : "Yeni Fiyatlama Kuralı"} size="lg">
+        <form onSubmit={handleCreateRule}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+            <div>
+              <label className="field-label">Kural Adı</label>
+              <input className="field" value={ruleForm.name} onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })} placeholder="Yaz Sezonu %30" required />
+            </div>
+            <div>
+              <label className="field-label">Kural Tipi</label>
+              <select className="field" value={ruleForm.rule_type} onChange={(e) => setRuleForm({ ...ruleForm, rule_type: e.target.value })}>
+                {RULE_TYPES.map(r => <option key={r.value} value={r.value}>{r.icon} {r.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="field-label">Fiyat Çarpanı (1.0 = değişiklik yok)</label>
+              <input className="field" type="number" step="0.01" min="0.1" max="5" value={ruleForm.multiplier}
+                onChange={(e) => setRuleForm({ ...ruleForm, multiplier: e.target.value })} required />
+              <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem" }}>
+                {ruleForm.multiplier > 1 ? `${Math.round((ruleForm.multiplier - 1) * 100)}% artış` :
+                  ruleForm.multiplier < 1 ? `${Math.round((1 - ruleForm.multiplier) * 100)}% indirim` : "Değişiklik yok"}
+              </div>
+            </div>
+            <div>
+              <label className="field-label">Oda Tipi (boş = tümü)</label>
+              <select className="field" value={ruleForm.room_type} onChange={(e) => setRuleForm({ ...ruleForm, room_type: e.target.value })}>
+                <option value="">Tüm Oda Tipleri</option>
+                {ROOM_TYPES_INV.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </div>
+
+            {/* Conditional fields based on rule_type */}
+            {(ruleForm.rule_type === "seasonal" || ruleForm.rule_type === "holiday") && (
+              <>
+                <div>
+                  <label className="field-label">Başlangıç Tarihi</label>
+                  <input className="field" type="date" value={ruleForm.date_start} onChange={(e) => setRuleForm({ ...ruleForm, date_start: e.target.value })} />
+                </div>
+                <div>
+                  <label className="field-label">Bitiş Tarihi</label>
+                  <input className="field" type="date" value={ruleForm.date_end} onChange={(e) => setRuleForm({ ...ruleForm, date_end: e.target.value })} />
+                </div>
+              </>
+            )}
+
+            {ruleForm.rule_type === "occupancy" && (
+              <>
+                <div>
+                  <label className="field-label">Min Doluluk Oranı (0-1)</label>
+                  <input className="field" type="number" step="0.1" min="0" max="1" value={ruleForm.occupancy_threshold_min}
+                    onChange={(e) => setRuleForm({ ...ruleForm, occupancy_threshold_min: e.target.value })} placeholder="0.7" />
+                </div>
+                <div>
+                  <label className="field-label">Max Doluluk Oranı (0-1)</label>
+                  <input className="field" type="number" step="0.1" min="0" max="1" value={ruleForm.occupancy_threshold_max}
+                    onChange={(e) => setRuleForm({ ...ruleForm, occupancy_threshold_max: e.target.value })} placeholder="1.0" />
+                </div>
+              </>
+            )}
+
+            {(ruleForm.rule_type === "early_bird" || ruleForm.rule_type === "last_minute") && (
+              <>
+                <div>
+                  <label className="field-label">Min Gün Öncesi</label>
+                  <input className="field" type="number" min="0" value={ruleForm.days_before_min}
+                    onChange={(e) => setRuleForm({ ...ruleForm, days_before_min: e.target.value })} placeholder={ruleForm.rule_type === "early_bird" ? "30" : "0"} />
+                </div>
+                <div>
+                  <label className="field-label">Max Gün Öncesi</label>
+                  <input className="field" type="number" min="0" value={ruleForm.days_before_max}
+                    onChange={(e) => setRuleForm({ ...ruleForm, days_before_max: e.target.value })} placeholder={ruleForm.rule_type === "early_bird" ? "365" : "7"} />
+                </div>
+              </>
+            )}
+
+            {ruleForm.rule_type === "weekend" && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label className="field-label">Hafta Sonu Günleri</label>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  {["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"].map((day, idx) => (
+                    <label key={idx} style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer" }}>
+                      <input type="checkbox" checked={ruleForm.weekend_days.includes(idx)}
+                        onChange={() => {
+                          const days = ruleForm.weekend_days.includes(idx)
+                            ? ruleForm.weekend_days.filter(d => d !== idx)
+                            : [...ruleForm.weekend_days, idx];
+                          setRuleForm({ ...ruleForm, weekend_days: days });
+                        }} />
+                      {day}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="field-label">Öncelik (yüksek = önce uygulanır)</label>
+              <input className="field" type="number" value={ruleForm.priority}
+                onChange={(e) => setRuleForm({ ...ruleForm, priority: e.target.value })} />
+            </div>
+            <div style={{ display: "flex", alignItems: "end" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+                <input type="checkbox" checked={ruleForm.is_active}
+                  onChange={(e) => setRuleForm({ ...ruleForm, is_active: e.target.checked })} />
+                Aktif
+              </label>
+            </div>
+          </div>
+
+          <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+            <button type="button" className="btn-secondary" onClick={() => { setShowCreate(false); setEditRule(null); }}>İptal</button>
+            <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Kaydediliyor..." : editRule ? "Güncelle" : "Oluştur"}</button>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title="Kuralı Sil"
+        message={`"${deleteConfirm?.name}" fiyatlama kuralını silmek istediğinize emin misiniz?`}
+        onConfirm={handleDeleteRule}
+        onCancel={() => setDeleteConfirm(null)}
+      />
+    </Layout>
+  );
+};
+
+// ── Performance Dashboard Page ────────────────────────────────────────────────
+
+const PerformancePage = () => {
+  const { hotel } = useAuth();
+  const [health, setHealth] = React.useState(null);
+  const [benchmark, setBenchmark] = React.useState(null);
+  const [indexes, setIndexes] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [benchLoading, setBenchLoading] = React.useState(false);
+  const [tab, setTab] = React.useState("health");
+
+  const loadHealth = async () => {
+    try {
+      const res = await axios.get("/performance/health");
+      setHealth(res.data);
+    } catch { }
+    setLoading(false);
+  };
+
+  const runBenchmark = async () => {
+    setBenchLoading(true);
+    try {
+      const res = await axios.get("/performance/benchmark");
+      setBenchmark(res.data);
+    } catch { }
+    setBenchLoading(false);
+  };
+
+  const loadIndexes = async () => {
+    try {
+      const res = await axios.get("/performance/db-indexes");
+      setIndexes(res.data);
+    } catch { }
+  };
+
+  React.useEffect(() => { loadHealth(); }, []);
+
+  if (!hotel?.is_admin) {
+    return <Layout><div className="alert" style={{ background: "#fee2e2" }}>Bu sayfa sadece admin kullanıcılar içindir.</div></Layout>;
+  }
+
+  return (
+    <Layout>
+      <div className="page-header">
+        <h1>🚀 Performans Merkezi</h1>
+      </div>
+
+      <div className="tab-bar" style={{ marginBottom: "1rem" }}>
+        <button className={`tab-btn ${tab === "health" ? "active" : ""}`} onClick={() => setTab("health")}>💚 Sağlık</button>
+        <button className={`tab-btn ${tab === "benchmark" ? "active" : ""}`} onClick={() => { setTab("benchmark"); if (!benchmark) runBenchmark(); }}>⚡ Benchmark</button>
+        <button className={`tab-btn ${tab === "indexes" ? "active" : ""}`} onClick={() => { setTab("indexes"); if (!indexes) loadIndexes(); }}>🗂️ İndeksler</button>
+      </div>
+
+      {/* Sağlık Tab */}
+      {tab === "health" && (
+        <div>
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+            <button className="btn-primary btn-sm" onClick={loadHealth} disabled={loading}>🔄 Yenile</button>
+          </div>
+
+          {health && (
+            <div>
+              <div className="grid-3" style={{ marginBottom: "1rem" }}>
+                <div className="card" style={{
+                  padding: "1.25rem", textAlign: "center",
+                  background: health.status === "healthy" ? "#f0fdf4" : "#fef3c7",
+                  borderLeft: `4px solid ${health.status === "healthy" ? "#22c55e" : "#f59e0b"}`,
+                }}>
+                  <div style={{ fontSize: "2rem" }}>{health.status === "healthy" ? "✅" : "⚠️"}</div>
+                  <div style={{ fontSize: "1.1rem", fontWeight: 700 }}>{health.status === "healthy" ? "Sağlıklı" : "Dikkat"}</div>
+                </div>
+                <div className="card" style={{ padding: "1.25rem", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.8rem", color: "#64748b" }}>Toplam Yanıt</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 700 }}>{health.total_response_ms}ms</div>
+                </div>
+                <div className="card" style={{ padding: "1.25rem", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.8rem", color: "#64748b" }}>MongoDB</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 700, color: health.checks?.mongodb?.status === "ok" ? "#16a34a" : "#dc2626" }}>
+                    {health.checks?.mongodb?.latency_ms || "-"}ms
+                  </div>
+                </div>
+              </div>
+
+              {health.checks?.collections && (
+                <div className="card" style={{ padding: "1.25rem" }}>
+                  <h3 style={{ marginBottom: "0.75rem" }}>Koleksiyon Sayıları</h3>
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr><th>Koleksiyon</th><th>Kayıt Sayısı</th></tr></thead>
+                      <tbody>
+                        {Object.entries(health.checks.collections.counts).map(([name, count]) => (
+                          <tr key={name}><td><strong>{name}</strong></td><td>{count}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.5rem" }}>
+                    Sorgu süresi: {health.checks.collections.query_time_ms}ms
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Benchmark Tab */}
+      {tab === "benchmark" && (
+        <div>
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+            <button className="btn-primary btn-sm" onClick={runBenchmark} disabled={benchLoading}>
+              {benchLoading ? "Test çalışıyor..." : "⚡ Benchmark Çalıştır"}
+            </button>
+          </div>
+
+          {benchmark && (
+            <div>
+              <div className="grid-3" style={{ marginBottom: "1rem" }}>
+                <div className="card" style={{
+                  padding: "1.25rem", textAlign: "center",
+                  background: benchmark.grade === "A" ? "#f0fdf4" : benchmark.grade === "B" ? "#eff6ff" : "#fef3c7",
+                }}>
+                  <div style={{ fontSize: "2.5rem", fontWeight: 700, color: benchmark.grade === "A" ? "#16a34a" : benchmark.grade === "B" ? "#2563eb" : "#f59e0b" }}>
+                    {benchmark.grade}
+                  </div>
+                  <div style={{ fontSize: "0.85rem", color: "#64748b" }}>{benchmark.grade_description}</div>
+                </div>
+                <div className="card" style={{ padding: "1.25rem", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.8rem", color: "#64748b" }}>Toplam Süre</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 700 }}>{benchmark.total_ms}ms</div>
+                </div>
+                <div className="card" style={{ padding: "1.25rem", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.8rem", color: "#64748b" }}>Test Sayısı</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 700 }}>{Object.keys(benchmark.benchmarks).length}</div>
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: "1.25rem" }}>
+                <h3 style={{ marginBottom: "0.75rem" }}>Test Detayları</h3>
+                <div className="table-wrap">
+                  <table>
+                    <thead><tr><th>Test</th><th>Süre (ms)</th><th>Durum</th></tr></thead>
+                    <tbody>
+                      {Object.entries(benchmark.benchmarks).map(([name, data]) => (
+                        <tr key={name}>
+                          <td><strong>{name.replace(/_/g, " ")}</strong></td>
+                          <td>{data.time_ms}ms</td>
+                          <td>
+                            <span style={{
+                              padding: "0.15rem 0.5rem", borderRadius: "999px", fontSize: "0.75rem",
+                              background: data.time_ms < 10 ? "#dcfce7" : data.time_ms < 50 ? "#eff6ff" : "#fef3c7",
+                              color: data.time_ms < 10 ? "#166534" : data.time_ms < 50 ? "#1e40af" : "#92400e",
+                            }}>
+                              {data.time_ms < 10 ? "Hızlı" : data.time_ms < 50 ? "Normal" : "Yavaş"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Visual Bar Chart */}
+              <div className="card" style={{ padding: "1.25rem", marginTop: "1rem" }}>
+                <h3 style={{ marginBottom: "0.75rem" }}>Performans Grafiği</h3>
+                {Object.entries(benchmark.benchmarks).map(([name, data]) => {
+                  const maxMs = Math.max(...Object.values(benchmark.benchmarks).map(d => d.time_ms));
+                  const pct = maxMs > 0 ? Math.max((data.time_ms / maxMs) * 100, 2) : 2;
+                  return (
+                    <div key={name} style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                      <div style={{ width: "140px", fontSize: "0.75rem", textAlign: "right", color: "#64748b" }}>{name.replace(/_/g, " ")}</div>
+                      <div style={{ flex: 1, height: "20px", background: "#f1f5f9", borderRadius: "4px", overflow: "hidden" }}>
+                        <div style={{
+                          width: `${pct}%`, height: "100%",
+                          background: data.time_ms < 10 ? "#22c55e" : data.time_ms < 50 ? "#3b82f6" : "#f59e0b",
+                          borderRadius: "4px",
+                          transition: "width 0.5s ease",
+                        }} />
+                      </div>
+                      <div style={{ width: "60px", fontSize: "0.75rem", fontWeight: 600 }}>{data.time_ms}ms</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* İndeksler Tab */}
+      {tab === "indexes" && (
+        <div>
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+            <button className="btn-primary btn-sm" onClick={loadIndexes}>🔄 Yenile</button>
+          </div>
+
+          {indexes && (
+            <div className="card" style={{ padding: "1.25rem" }}>
+              <h3 style={{ marginBottom: "0.75rem" }}>MongoDB İndeksleri</h3>
+              {Object.entries(indexes).map(([coll, idxs]) => (
+                <div key={coll} style={{ marginBottom: "1rem" }}>
+                  <h4 style={{ fontSize: "0.9rem", color: "#1e40af", marginBottom: "0.25rem" }}>📁 {coll}</h4>
+                  {idxs.error ? (
+                    <div style={{ color: "#dc2626", fontSize: "0.8rem" }}>Hata: {idxs.error}</div>
+                  ) : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>
+                      {Object.entries(idxs).map(([idxName, info]) => (
+                        <span key={idxName} className="chip" style={{ fontSize: "0.7rem" }}>
+                          {idxName}: {info.keys?.map(k => k.join(":")).join(", ")}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Layout>
+  );
+};
+
 // ── App Router ────────────────────────────────────────────────────────────────
 const App = () => (
   <AuthProvider>
