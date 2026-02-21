@@ -299,15 +299,32 @@ const Layout = ({ children }) => {
   const { hotel, logout } = useAuth();
   const location = useLocation();
   const isActive = (path) => location.pathname.startsWith(path) ? "active" : "";
+  const [unreadCount, setUnreadCount] = React.useState(0);
+
+  React.useEffect(() => {
+    const loadUnread = async () => {
+      try {
+        const res = await axios.get("/notifications/unread-count");
+        setUnreadCount(res.data.count);
+      } catch {}
+    };
+    loadUnread();
+    const interval = setInterval(loadUnread, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="shell">
       <header className="shell-header">
         <div className="shell-brand">
           <div className="shell-brand-icon">🏨</div>
-          CapX Sapanca-Kartepe
+          CapX Platform
         </div>
         <div className="shell-right">
+          <Link to="/notifications" className="notification-bell" title="Bildirimler">
+            🔔
+            {unreadCount > 0 && <span className="notification-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>}
+          </Link>
           <span className="shell-user">{hotel?.name}</span>
           {hotel?.is_admin && (
             <span className="admin-badge">⚙️ Admin</span>
@@ -338,6 +355,17 @@ const Layout = ({ children }) => {
           </Link>
           <Link to="/matches" className={isActive("/matches")} data-testid="nav-matches">
             🤝 Eşleşmeler
+          </Link>
+          <div className="shell-nav-divider" />
+          <div className="shell-nav-label">Finans</div>
+          <Link to="/payments" className={isActive("/payments")}>
+            💳 Ödemeler
+          </Link>
+          <Link to="/invoices" className={isActive("/invoices")}>
+            🧾 Faturalar
+          </Link>
+          <Link to="/subscription" className={isActive("/subscription")}>
+            ⭐ Abonelik
           </Link>
           <div className="shell-nav-divider" />
           <div className="shell-nav-label">Hesap</div>
