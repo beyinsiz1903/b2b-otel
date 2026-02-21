@@ -3388,10 +3388,13 @@ const AdminPage = () => {
   const [hotels, setHotels] = React.useState([]);
   const [matches, setMatches] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
-  const [rejectModal, setRejectModal] = React.useState(null); // hotel to reject
+  const [rejectModal, setRejectModal] = React.useState(null);
   const [rejectReason, setRejectReason] = React.useState("");
-  const [docModal, setDocModal] = React.useState(null); // {hotel, docs}
+  const [docModal, setDocModal] = React.useState(null);
   const [actionMsg, setActionMsg] = React.useState("");
+  const [adminRevenue, setAdminRevenue] = React.useState(null);
+  const [regionPricing, setRegionPricing] = React.useState([]);
+  const [regionStats, setRegionStats] = React.useState(null);
 
   React.useEffect(() => {
     if (!hotel?.is_admin) navigate("/dashboard");
@@ -3402,6 +3405,8 @@ const AdminPage = () => {
     if (tab === "overview") loadOverview();
     if (tab === "hotels") loadHotels();
     if (tab === "matches") loadAdminMatches();
+    if (tab === "revenue") loadAdminRevenue();
+    if (tab === "regions") loadRegionData();
   }, [tab]);
 
   const loadPending = async () => {
