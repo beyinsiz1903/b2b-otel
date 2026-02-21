@@ -180,7 +180,7 @@ class CapXTester:
             "date_start": start_date.isoformat(),
             "date_end": (start_date + timedelta(days=5)).isoformat()
         }
-        response = self.make_request("POST", "/inventory/check-availability", params=check_params)
+        response = self.make_request("GET", "/inventory/check-availability", params=check_params)
         if response.status_code == 200:
             availability = response.json()
             self.log_test("Check availability", True)
