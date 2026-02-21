@@ -724,7 +724,8 @@ async def serve_doc(filename: str, current_hotel: Dict[str, Any] = Depends(get_c
 
 
 @api.post("/auth/register", response_model=HotelPublic)
-async def register(hotel_in: HotelCreate):
+@limiter.limit("5/minute")
+async def register(request: Request, hotel_in: HotelCreate):
     existing = await db.hotels.find_one({"email": hotel_in.email})
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bu e-posta zaten kayıtlı.")
