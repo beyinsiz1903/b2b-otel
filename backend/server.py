@@ -992,6 +992,9 @@ async def accept_request(request_id: str, current_hotel: Dict[str, Any] = Depend
     await db.matches.insert_one(match_doc)
     await log_activity(current_hotel["_id"], "accept", "request", req["_id"], {"match_id": match_id})
 
+    # Envanter otomatik güncelle
+    await _decrement_inventory_on_match(listing)
+
     return MatchPublic(
         id=match_id,
         request_id=req["_id"],
