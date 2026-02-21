@@ -3659,7 +3659,7 @@ async def request_statistics(
 
 @api.get("/")
 async def root() -> Dict[str, str]:
-    return {"message": "CapX Sapanca-Kartepe API v3"}
+    return {"message": "CapX Multi-Region API v4"}
 
 
 app.include_router(api)
