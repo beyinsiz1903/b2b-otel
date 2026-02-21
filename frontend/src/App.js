@@ -3142,6 +3142,43 @@ const ProfilePage = () => {
           )}
 
           {tab === "sheets" && <GoogleSheetsTab />}
+
+          {tab === "kvkk" && (
+            <div className="card" style={{ padding: "1.5rem" }}>
+              <h3>🔒 KVKK - Kişisel Verilerin Korunması</h3>
+              <p style={{ color: "#6b7c93", margin: "1rem 0", fontSize: "0.9rem" }}>
+                6698 sayılı Kişisel Verilerin Korunması Kanunu kapsamında, kişisel verilerinizi görüntüleyebilir,
+                dışa aktarabilir veya hesap silme talebinde bulunabilirsiniz.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                <div className="card" style={{ background: "#f0fdf4", padding: "1rem" }}>
+                  <h4>📥 Verilerimi Dışa Aktar</h4>
+                  <p style={{ fontSize: "0.85rem", color: "#6b7c93", margin: "0.5rem 0" }}>Tüm kişisel verilerinizi JSON formatında indirin.</p>
+                  <button className="btn-primary btn-sm" onClick={async () => {
+                    try {
+                      const res = await axios.get("/kvkk/export");
+                      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url; a.download = `kvkk-export-${new Date().toISOString().slice(0, 10)}.json`;
+                      a.click(); URL.revokeObjectURL(url);
+                    } catch { alert("Dışa aktarma başarısız"); }
+                  }}>📥 Dışa Aktar</button>
+                </div>
+                <div className="card" style={{ background: "#fef2f2", padding: "1rem" }}>
+                  <h4>🗑️ Hesap Silme Talebi</h4>
+                  <p style={{ fontSize: "0.85rem", color: "#6b7c93", margin: "0.5rem 0" }}>Hesabınızın ve tüm verilerinizin silinmesini talep edin. Bu işlem 30 gün içinde gerçekleştirilir.</p>
+                  <button className="btn-ghost btn-sm" style={{ color: "#ef4444", borderColor: "#ef4444" }} onClick={async () => {
+                    if (!window.confirm("Hesabınızın silinmesini talep etmek istediğinize emin misiniz? Bu işlem geri alınamaz.")) return;
+                    try {
+                      const res = await axios.post("/kvkk/delete-request");
+                      alert(res.data.message);
+                    } catch (e) { alert(e.response?.data?.detail || "Hata"); }
+                  }}>🗑️ Silme Talebi Oluştur</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Layout>
