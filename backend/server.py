@@ -8,9 +8,10 @@ import warnings
 import os
 import uuid
 import math
+import json
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, APIRouter, status, Query, UploadFile, File
+from fastapi import Depends, FastAPI, HTTPException, APIRouter, status, Query, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +20,9 @@ from jose import JWTError, jwt
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Google Sheets
 from google_auth_oauthlib.flow import Flow
