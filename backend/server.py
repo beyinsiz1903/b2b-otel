@@ -792,7 +792,7 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         )
     if approval == "rejected":
         reason = hotel.get("rejection_reason", "")
-        detail = f"REJECTED: Başvurunuz reddedildi."
+        detail = "REJECTED: Başvurunuz reddedildi."
         if reason:
             detail += f" Sebep: {reason}"
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
@@ -1223,7 +1223,7 @@ async def offer_alternative(request_id: str, alt: AlternativeOffer, current_hote
     )
     await log_activity(current_hotel["_id"], "offer_alternative", "request", req["_id"], alt_payload)
     # Bildirim oluştur
-    await create_notification(req["from_hotel_id"], "alternative_offered", "Alternatif Teklif Aldınız", f"Talebiniz için alternatif bir teklif sunuldu.", {"request_id": req["_id"]})
+    await create_notification(req["from_hotel_id"], "alternative_offered", "Alternatif Teklif Aldınız", "Talebiniz için alternatif bir teklif sunuldu.", {"request_id": req["_id"]})
     refreshed = await db.requests.find_one({"_id": req["_id"]})
     return request_to_public(refreshed)
 
