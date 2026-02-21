@@ -1432,8 +1432,14 @@ async def get_stats(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
     total_fees = sum(m.get("fee_amount", 0) for m in matches)
 
     # Active listings
-    active_listings = sum(1 for l in listings if l.get("date_end", now_utc()) >= now)
-    expired_listings = sum(1 for l in listings if l.get("date_end", now_utc()) < now)
+    def _safe_date(d):
+        """Ensure datetime is timezone-aware for comparison."""
+        if d and d.tzinfo is None:
+            return d.replace(tzinfo=timezone.utc)
+        return d or now
+
+    active_listings = sum(1 for l in listings if _safe_date(l.get("date_end")) >= now)
+    expired_listings = sum(1 for l in listings if _safe_date(l.get("date_end")) < now)
 
     # Region breakdown for matches
     region_counts: Dict[str, int] = {}
