@@ -3149,207 +3149,231 @@ const ProfilePage = () => {
 const ReportsPage = () => {
   const [stats, setStats] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
+  const [tab, setTab] = React.useState("overview");
+  const [marketTrends, setMarketTrends] = React.useState(null);
+  const [perfScores, setPerfScores] = React.useState(null);
+  const [revenue, setRevenue] = React.useState(null);
+  const [reqStats, setReqStats] = React.useState(null);
 
   React.useEffect(() => {
     const load = async () => {
       try {
         const res = await axios.get("/stats");
         setStats(res.data);
-      } catch {
-        setStats(null);
-      } finally {
-        setLoading(false);
-      }
+      } catch { setStats(null); }
+      finally { setLoading(false); }
     };
     load();
   }, []);
 
-  if (loading) {
-    return <Layout><div className="page-center" style={{ height: 300 }}><span className="loading-spin" /></div></Layout>;
-  }
+  React.useEffect(() => {
+    if (tab === "market" && !marketTrends) {
+      axios.get("/stats/market-trends").then((r) => setMarketTrends(r.data)).catch(() => {});
+    }
+    if (tab === "performance" && !perfScores) {
+      axios.get("/stats/performance-scores").then((r) => setPerfScores(r.data)).catch(() => {});
+    }
+    if (tab === "revenue" && !revenue) {
+      axios.get("/reports/revenue").then((r) => setRevenue(r.data)).catch(() => {});
+    }
+    if (tab === "requests" && !reqStats) {
+      axios.get("/stats/requests?period_days=30").then((r) => setReqStats(r.data)).catch(() => {});
+    }
+  }, [tab, marketTrends, perfScores, revenue, reqStats]);
 
-  if (!stats) {
-    return <Layout><div className="error">İstatistikler yüklenemedi.</div></Layout>;
-  }
+  if (loading) return <Layout><div className="page-center" style={{ height: 300 }}><span className="loading-spin" /></div></Layout>;
+  if (!stats) return <Layout><div className="error">İstatistikler yüklenemedi.</div></Layout>;
 
-  // Monthly data
   const allMonthKeys = Object.keys({ ...stats.monthly_matches, ...stats.monthly_fees }).sort();
   const last6 = allMonthKeys.slice(-6);
   const maxMatches = Math.max(...last6.map((k) => stats.monthly_matches[k] || 0), 1);
-
-  // Region data
   const regions = Object.entries(stats.region_counts || {});
   const maxRegion = Math.max(...regions.map(([, v]) => v), 1);
+
+  const tabs = [
+    { id: "overview", label: "📊 Genel Bakış" },
+    { id: "requests", label: "📋 Talep İstatistikleri" },
+    { id: "market", label: "🌍 Pazar Trendleri" },
+    { id: "performance", label: "🏆 Performans" },
+    { id: "revenue", label: "💰 Gelir" },
+  ];
 
   return (
     <Layout>
       <h1 className="page-title">📈 Raporlar &amp; Analitik</h1>
-
-      <div className="cards-row" style={{ marginBottom: "2rem" }}>
-        <div className="kpi-card kpi-green">
-          <span>Toplam Eşleşme</span>
-          <strong>{stats.total_matches}</strong>
-        </div>
-        <div className="kpi-card kpi-blue">
-          <span>Toplam Hizmet Bedeli</span>
-          <strong style={{ fontSize: "1.3rem" }}>{stats.total_fees?.toLocaleString("tr-TR")} TL</strong>
-        </div>
-        <div className="kpi-card kpi-orange">
-          <span>Gönderilen Kabul %</span>
-          <strong>{stats.acceptance_rate_outgoing}%</strong>
-        </div>
-        <div className="kpi-card">
-          <span>Gelen Kabul %</span>
-          <strong>{stats.acceptance_rate_incoming}%</strong>
-        </div>
+      <div className="tab-bar" style={{ marginBottom: "1.5rem" }}>
+        {tabs.map((t) => (
+          <button key={t.id} className={`tab-btn ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>{t.label}</button>
+        ))}
       </div>
 
-      <div className="reports-grid">
-        {/* Monthly Matches Chart */}
-        <div className="report-card">
-          <h3>📅 Aylık Eşleşmeler</h3>
-          {last6.length === 0 ? (
-            <div className="text-muted text-sm">Henüz veri yok</div>
-          ) : (
-            <div className="bar-chart">
-              {last6.map((month) => {
-                const count = stats.monthly_matches[month] || 0;
-                const pct = Math.max((count / maxMatches) * 100, 2);
-                return (
-                  <div key={month} className="bar-row">
-                    <div className="bar-label">{month.slice(5)}/{month.slice(2, 4)}</div>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: `${pct}%` }}>
-                        {count > 0 && <span className="bar-value">{count}</span>}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Monthly Fees Chart */}
-        <div className="report-card">
-          <h3>💰 Aylık Hizmet Bedeli (TL)</h3>
-          {last6.length === 0 ? (
-            <div className="text-muted text-sm">Henüz veri yok</div>
-          ) : (
-            <div className="bar-chart">
-              {last6.map((month) => {
-                const fee = stats.monthly_fees[month] || 0;
-                const maxFee = Math.max(...last6.map((k) => stats.monthly_fees[k] || 0), 1);
-                const pct = Math.max((fee / maxFee) * 100, 2);
-                return (
-                  <div key={month} className="bar-row">
-                    <div className="bar-label">{month.slice(5)}/{month.slice(2, 4)}</div>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: `${pct}%`, background: "linear-gradient(90deg, #d97706, #fbbf24)" }}>
-                        {fee > 0 && <span className="bar-value">{fee.toLocaleString("tr-TR")}</span>}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Request Stats */}
-        <div className="report-card">
-          <h3>📋 Talep İstatistikleri</h3>
-          <div className="stats-list">
-            <div className="stats-row">
-              <span className="stats-row-label">Toplam Gönderilen</span>
-              <span className="stats-row-value">{stats.total_outgoing_requests}</span>
-            </div>
-            <div className="stats-row">
-              <span className="stats-row-label">Kabul Edilen</span>
-              <span className="stats-row-value text-green">{stats.accepted_outgoing}</span>
-            </div>
-            <div className="stats-row">
-              <span className="stats-row-label">Toplam Gelen</span>
-              <span className="stats-row-value">{stats.total_incoming_requests}</span>
-            </div>
-            <div className="stats-row">
-              <span className="stats-row-label">Kabul Ettiğim</span>
-              <span className="stats-row-value text-green">{stats.accepted_incoming}</span>
-            </div>
-            <div className="stats-row">
-              <span className="stats-row-label">Bekleyen Gelen</span>
-              <span className="stats-row-value text-red">{stats.pending_incoming}</span>
-            </div>
+      {tab === "overview" && (
+        <>
+          <div className="cards-row" style={{ marginBottom: "2rem" }}>
+            <div className="kpi-card kpi-green"><span>Toplam Eşleşme</span><strong>{stats.total_matches}</strong></div>
+            <div className="kpi-card kpi-blue"><span>Toplam Hizmet Bedeli</span><strong style={{ fontSize: "1.3rem" }}>{stats.total_fees?.toLocaleString("tr-TR")} TL</strong></div>
+            <div className="kpi-card kpi-orange"><span>Gönderilen Kabul %</span><strong>{stats.acceptance_rate_outgoing}%</strong></div>
+            <div className="kpi-card"><span>Gelen Kabul %</span><strong>{stats.acceptance_rate_incoming}%</strong></div>
           </div>
-        </div>
-
-        {/* Region Breakdown */}
-        <div className="report-card">
-          <h3>📍 Bölgesel Eşleşmeler</h3>
-          {regions.length === 0 ? (
-            <div className="text-muted text-sm">Henüz veri yok</div>
-          ) : (
-            <div className="bar-chart">
-              {regions.map(([region, count]) => {
-                const pct = Math.max((count / maxRegion) * 100, 2);
-                return (
-                  <div key={region} className="bar-row">
-                    <div className="bar-label" style={{ width: 80 }}>{region}</div>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: `${pct}%`, background: "linear-gradient(90deg, #1d4ed8, #60a5fa)" }}>
-                        <span className="bar-value">{count}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="reports-grid">
+            <div className="report-card">
+              <h3>📅 Aylık Eşleşmeler</h3>
+              {last6.length === 0 ? <div className="text-muted text-sm">Henüz veri yok</div> : (
+                <div className="bar-chart">
+                  {last6.map((month) => {
+                    const count = stats.monthly_matches[month] || 0;
+                    const pct = Math.max((count / maxMatches) * 100, 2);
+                    return (<div key={month} className="bar-row"><div className="bar-label">{month.slice(5)}/{month.slice(2, 4)}</div><div className="bar-track"><div className="bar-fill" style={{ width: `${pct}%` }}>{count > 0 && <span className="bar-value">{count}</span>}</div></div></div>);
+                  })}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        {/* Listing Stats */}
-        <div className="report-card">
-          <h3>🏠 İlan Durumu</h3>
-          <div className="stats-list">
-            <div className="stats-row">
-              <span className="stats-row-label">Aktif İlanlar</span>
-              <span className="stats-row-value text-green">{stats.active_listings}</span>
+            <div className="report-card">
+              <h3>📍 Bölgesel Eşleşmeler</h3>
+              {regions.length === 0 ? <div className="text-muted text-sm">Henüz veri yok</div> : (
+                <div className="bar-chart">
+                  {regions.map(([region, count]) => {
+                    const pct = Math.max((count / maxRegion) * 100, 2);
+                    return (<div key={region} className="bar-row"><div className="bar-label" style={{ width: 80 }}>{region}</div><div className="bar-track"><div className="bar-fill" style={{ width: `${pct}%`, background: "linear-gradient(90deg, #1d4ed8, #60a5fa)" }}><span className="bar-value">{count}</span></div></div></div>);
+                  })}
+                </div>
+              )}
             </div>
-            <div className="stats-row">
-              <span className="stats-row-label">Süresi Geçmiş</span>
-              <span className="stats-row-value text-muted">{stats.expired_listings}</span>
-            </div>
-          </div>
-          <div style={{ marginTop: "1rem" }}>
-            <div style={{ fontSize: "0.8rem", color: "#6b7c93", marginBottom: "0.5rem" }}>Gönderilen Kabul Oranı</div>
-            <div className="rate-indicator">
-              <div className="rate-bar-outer">
-                <div className="rate-bar-inner" style={{ width: `${stats.acceptance_rate_outgoing}%` }} />
+            <div className="report-card">
+              <h3>🏠 İlan Durumu</h3>
+              <div className="stats-list">
+                <div className="stats-row"><span className="stats-row-label">Aktif İlanlar</span><span className="stats-row-value text-green">{stats.active_listings}</span></div>
+                <div className="stats-row"><span className="stats-row-label">Süresi Geçmiş</span><span className="stats-row-value text-muted">{stats.expired_listings}</span></div>
+                <div className="stats-row"><span className="stats-row-label">Bu Ay Eşleşme</span><span className="stats-row-value">{stats.this_month_matches}</span></div>
+                <div className="stats-row"><span className="stats-row-label">Bu Ay Bedel</span><span className="stats-row-value">{stats.this_month_fees?.toLocaleString("tr-TR")} TL</span></div>
               </div>
-              <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#2e6b57" }}>{stats.acceptance_rate_outgoing}%</span>
             </div>
           </div>
-        </div>
+        </>
+      )}
 
-        {/* This month summary */}
-        <div className="report-card">
-          <h3>🗓️ Bu Ay Özeti</h3>
-          <div className="stats-list">
-            <div className="stats-row">
-              <span className="stats-row-label">Eşleşme</span>
-              <span className="stats-row-value">{stats.this_month_matches}</span>
-            </div>
-            <div className="stats-row">
-              <span className="stats-row-label">Hizmet Bedeli</span>
-              <span className="stats-row-value">{stats.this_month_fees?.toLocaleString("tr-TR")} TL</span>
-            </div>
-            <div className="stats-row">
-              <span className="stats-row-label">Toplam Birikimli</span>
-              <span className="stats-row-value">{stats.total_fees?.toLocaleString("tr-TR")} TL</span>
-            </div>
-          </div>
+      {tab === "requests" && (
+        <div className="reports-grid">
+          {reqStats ? (
+            <>
+              <div className="report-card">
+                <h3>📥 Gelen Talepler (Son {reqStats.period_days} gün)</h3>
+                <div className="stats-list">
+                  <div className="stats-row"><span className="stats-row-label">Toplam</span><span className="stats-row-value">{reqStats.incoming?.total}</span></div>
+                  {Object.entries(reqStats.incoming?.by_status || {}).map(([s, c]) => (
+                    <div key={s} className="stats-row"><span className="stats-row-label">{statusLabel(s)}</span><span className="stats-row-value">{c}</span></div>
+                  ))}
+                </div>
+                <div style={{ marginTop: "1rem" }}>
+                  <div style={{ fontSize: "0.85rem", color: "#6b7c93" }}>Kabul Oranı</div>
+                  <div className="rate-indicator"><div className="rate-bar-outer"><div className="rate-bar-inner" style={{ width: `${reqStats.acceptance_rate}%` }} /></div><span style={{ fontWeight: 700 }}>{reqStats.acceptance_rate}%</span></div>
+                </div>
+              </div>
+              <div className="report-card">
+                <h3>📤 Gönderilen Talepler</h3>
+                <div className="stats-list">
+                  <div className="stats-row"><span className="stats-row-label">Toplam</span><span className="stats-row-value">{reqStats.outgoing?.total}</span></div>
+                  {Object.entries(reqStats.outgoing?.by_status || {}).map(([s, c]) => (
+                    <div key={s} className="stats-row"><span className="stats-row-label">{statusLabel(s)}</span><span className="stats-row-value">{c}</span></div>
+                  ))}
+                </div>
+                <div style={{ marginTop: "1rem" }}>
+                  <div style={{ fontSize: "0.85rem", color: "#6b7c93" }}>Kaçırma Oranı</div>
+                  <div className="rate-indicator"><div className="rate-bar-outer"><div className="rate-bar-inner" style={{ width: `${reqStats.missed_rate}%`, background: "#ef4444" }} /></div><span style={{ fontWeight: 700, color: "#ef4444" }}>{reqStats.missed_rate}%</span></div>
+                </div>
+              </div>
+            </>
+          ) : <div className="page-center"><span className="loading-spin" /></div>}
         </div>
-      </div>
+      )}
+
+      {tab === "market" && (
+        <div>
+          <h2 style={{ marginBottom: "1rem" }}>🌍 Pazar Trendleri - Bölgesel Arz/Talep Dengesi</h2>
+          {marketTrends ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1rem" }}>
+              {Object.entries(marketTrends).map(([key, data]) => (
+                <div key={key} className="card" style={{ borderLeft: `4px solid ${data.balance === "dengeli" ? "#10b981" : data.balance === "talep_fazla" ? "#ef4444" : "#3b82f6"}` }}>
+                  <h3>{data.label}</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", margin: "1rem 0" }}>
+                    <div style={{ textAlign: "center", padding: "0.5rem", background: "#f0fdf4", borderRadius: "0.5rem" }}><div style={{ fontSize: "1.2rem", fontWeight: 700, color: "#10b981" }}>{data.supply}</div><div style={{ fontSize: "0.75rem", color: "#6b7c93" }}>Arz (Aktif İlan)</div></div>
+                    <div style={{ textAlign: "center", padding: "0.5rem", background: "#fef2f2", borderRadius: "0.5rem" }}><div style={{ fontSize: "1.2rem", fontWeight: 700, color: "#ef4444" }}>{data.demand}</div><div style={{ fontSize: "0.75rem", color: "#6b7c93" }}>Talep (30 gün)</div></div>
+                  </div>
+                  <div className="stats-list" style={{ fontSize: "0.85rem" }}>
+                    <div className="stats-row"><span className="stats-row-label">Eşleşme</span><span className="stats-row-value">{data.matches}</span></div>
+                    <div className="stats-row"><span className="stats-row-label">Ort. Fiyat</span><span className="stats-row-value">₺{data.avg_price?.toLocaleString("tr-TR")}</span></div>
+                    <div className="stats-row"><span className="stats-row-label">Eşleşme Ücreti</span><span className="stats-row-value">₺{data.match_fee}</span></div>
+                    <div className="stats-row"><span className="stats-row-label">Durum</span><span className="stats-row-value">{data.balance === "dengeli" ? "⚖️ Dengeli" : data.balance === "talep_fazla" ? "📈 Talep Fazla" : "📉 Arz Fazla"}</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <div className="page-center"><span className="loading-spin" /></div>}
+        </div>
+      )}
+
+      {tab === "performance" && (
+        <div>
+          {perfScores ? (
+            <div className="reports-grid">
+              <div className="report-card" style={{ gridColumn: "1 / -1" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "2rem" }}>
+                  <div style={{ textAlign: "center", minWidth: "120px" }}>
+                    <div style={{ fontSize: "3rem", fontWeight: 800, color: perfScores.grade === "A" ? "#10b981" : perfScores.grade === "B" ? "#3b82f6" : perfScores.grade === "C" ? "#f59e0b" : "#ef4444" }}>{perfScores.grade}</div>
+                    <div style={{ fontSize: "1.2rem", fontWeight: 600 }}>{perfScores.score}/100</div>
+                    <div style={{ color: "#6b7c93", fontSize: "0.8rem" }}>Son {perfScores.period_days} gün</div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <h3>🏆 Performans Özeti</h3>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "1rem", marginTop: "1rem" }}>
+                      <div><div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#10b981" }}>{perfScores.approval_rate}%</div><div style={{ color: "#6b7c93", fontSize: "0.8rem" }}>Onay Oranı</div></div>
+                      <div><div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#ef4444" }}>{perfScores.cancellation_rate}%</div><div style={{ color: "#6b7c93", fontSize: "0.8rem" }}>İptal Oranı</div></div>
+                      <div><div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#3b82f6" }}>{perfScores.avg_response_hours}h</div><div style={{ color: "#6b7c93", fontSize: "0.8rem" }}>Ort. Cevap Süresi</div></div>
+                      <div><div style={{ fontSize: "1.5rem", fontWeight: 700 }}>{perfScores.match_count}</div><div style={{ color: "#6b7c93", fontSize: "0.8rem" }}>Eşleşme</div></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="report-card">
+                <h3>📋 Talep Kırılımı</h3>
+                <div className="stats-list">
+                  <div className="stats-row"><span className="stats-row-label">Toplam Gelen</span><span className="stats-row-value">{perfScores.total_incoming_requests}</span></div>
+                  <div className="stats-row"><span className="stats-row-label">Kabul</span><span className="stats-row-value text-green">{perfScores.accepted}</span></div>
+                  <div className="stats-row"><span className="stats-row-label">Red</span><span className="stats-row-value text-red">{perfScores.rejected}</span></div>
+                  <div className="stats-row"><span className="stats-row-label">Alternatif</span><span className="stats-row-value">{perfScores.alternative_offered}</span></div>
+                  <div className="stats-row"><span className="stats-row-label">İptal</span><span className="stats-row-value">{perfScores.cancelled}</span></div>
+                  <div className="stats-row"><span className="stats-row-label">Bekleyen</span><span className="stats-row-value">{perfScores.pending}</span></div>
+                </div>
+              </div>
+            </div>
+          ) : <div className="page-center"><span className="loading-spin" /></div>}
+        </div>
+      )}
+
+      {tab === "revenue" && (
+        <div>
+          {revenue ? (
+            <div className="reports-grid">
+              <div className="report-card" style={{ gridColumn: "1 / -1" }}>
+                <div className="cards-row">
+                  <div className="kpi-card kpi-green"><span>Toplam Eşleşme</span><strong>{revenue.total_matches}</strong></div>
+                  <div className="kpi-card kpi-blue"><span>Toplam Ödeme</span><strong>₺{revenue.total_payments?.toLocaleString("tr-TR")}</strong></div>
+                </div>
+              </div>
+              <div className="report-card">
+                <h3>📅 Aylık Gelir</h3>
+                {Object.keys(revenue.monthly || {}).length === 0 ? <div className="text-muted">Henüz veri yok</div> : (
+                  <div className="stats-list">
+                    {Object.entries(revenue.monthly).sort().map(([month, data]) => (
+                      <div key={month} className="stats-row"><span className="stats-row-label">{month}</span><span className="stats-row-value">₺{data.revenue?.toLocaleString("tr-TR")} ({data.matches} eşleşme)</span></div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : <div className="page-center"><span className="loading-spin" /></div>}
+        </div>
+      )}
     </Layout>
   );
 };
