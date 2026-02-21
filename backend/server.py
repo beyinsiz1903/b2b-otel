@@ -778,7 +778,8 @@ async def register(request: Request, hotel_in: HotelCreate):
 
 
 @api.post("/auth/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+@limiter.limit("10/minute")
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     hotel = await db.hotels.find_one({"email": form_data.username})
     if not hotel or not verify_password(form_data.password, hotel["password_hash"]):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="E-posta veya şifre hatalı.")
