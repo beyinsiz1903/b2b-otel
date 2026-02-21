@@ -1965,11 +1965,871 @@ async def serve_file(filename: str):
     return FileResponse(str(file_path))
 
 
+# ============================================================================
+# --- Hotel Inventory System -------------------------------------------------
+# ============================================================================
+
+def inventory_to_public(doc: Dict[str, Any]) -> InventoryItemPublic:
+    return InventoryItemPublic(
+        id=doc["_id"],
+        hotel_id=doc["hotel_id"],
+        room_type=doc["room_type"],
+        room_type_name=doc["room_type_name"],
+        total_rooms=doc["total_rooms"],
+        description=doc.get("description"),
+        features=doc.get("features"),
+        capacity_label=doc.get("capacity_label"),
+        pax=doc.get("pax"),
+        image_urls=doc.get("image_urls"),
+        created_at=doc["created_at"],
+        updated_at=doc["updated_at"],
+    )
+
+
+@api.post("/inventory", response_model=InventoryItemPublic)
+async def create_inventory_item(payload: InventoryItemCreate, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Yeni oda tipi envanteri oluştur."""
+    inv_id = str(uuid.uuid4())
+    now = now_utc()
+    doc = {
+        "_id": inv_id,
+        "hotel_id": current_hotel["_id"],
+        "room_type": payload.room_type,
+        "room_type_name": payload.room_type_name,
+        "total_rooms": payload.total_rooms,
+        "description": payload.description,
+        "features": payload.features or [],
+        "capacity_label": payload.capacity_label,
+        "pax": payload.pax,
+        "image_urls": payload.image_urls or [],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.inventory.insert_one(doc)
+    await log_activity(current_hotel["_id"], "create", "inventory", inv_id, {"room_type": payload.room_type, "total_rooms": payload.total_rooms})
+    return inventory_to_public(doc)
+
+
+@api.get("/inventory", response_model=List[InventoryItemPublic])
+async def list_inventory(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Otelin tüm envanter kalemlerini listele."""
+    cursor = db.inventory.find({"hotel_id": current_hotel["_id"]}).sort("created_at", -1)
+    docs = await cursor.to_list(length=200)
+    return [inventory_to_public(d) for d in docs]
+
+
+@api.get("/inventory/{inv_id}", response_model=InventoryItemPublic)
+async def get_inventory_item(inv_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    doc = await db.inventory.find_one({"_id": inv_id, "hotel_id": current_hotel["_id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Envanter kalemi bulunamadı")
+    return inventory_to_public(doc)
+
+
+@api.put("/inventory/{inv_id}", response_model=InventoryItemPublic)
+async def update_inventory_item(inv_id: str, payload: InventoryItemUpdate, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    doc = await db.inventory.find_one({"_id": inv_id, "hotel_id": current_hotel["_id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Envanter kalemi bulunamadı")
+
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    if not updates:
+        return inventory_to_public(doc)
+    updates["updated_at"] = now_utc()
+    await db.inventory.update_one({"_id": inv_id}, {"$set": updates})
+    await log_activity(current_hotel["_id"], "update", "inventory", inv_id, {"fields": list(updates.keys())})
+    refreshed = await db.inventory.find_one({"_id": inv_id})
+    return inventory_to_public(refreshed)
+
+
+@api.delete("/inventory/{inv_id}")
+async def delete_inventory_item(inv_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    doc = await db.inventory.find_one({"_id": inv_id, "hotel_id": current_hotel["_id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Envanter kalemi bulunamadı")
+    # İlişkili günlük müsaitlikleri de sil
+    await db.daily_availability.delete_many({"inventory_id": inv_id})
+    await db.inventory.delete_one({"_id": inv_id})
+    await log_activity(current_hotel["_id"], "delete", "inventory", inv_id, {})
+    return {"message": "Envanter kalemi ve ilişkili müsaitlikler silindi"}
+
+
+@api.post("/inventory/availability/bulk")
+async def set_availability_bulk(payload: AvailabilityBulkSet, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Tarih aralığı için toplu müsaitlik ayarla."""
+    inv = await db.inventory.find_one({"_id": payload.inventory_id, "hotel_id": current_hotel["_id"]})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Envanter kalemi bulunamadı")
+
+    if payload.available_rooms > inv["total_rooms"]:
+        raise HTTPException(status_code=400, detail=f"Müsait oda sayısı toplam oda sayısından ({inv['total_rooms']}) fazla olamaz")
+
+    try:
+        d_start = date.fromisoformat(payload.date_start)
+        d_end = date.fromisoformat(payload.date_end)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz tarih formatı. YYYY-MM-DD kullanın.")
+
+    if d_start > d_end:
+        raise HTTPException(status_code=400, detail="Başlangıç tarihi bitiş tarihinden sonra olamaz")
+
+    if (d_end - d_start).days > 365:
+        raise HTTPException(status_code=400, detail="En fazla 365 günlük aralık ayarlanabilir")
+
+    updated_count = 0
+    current_date = d_start
+    while current_date <= d_end:
+        date_str = current_date.isoformat()
+        existing = await db.daily_availability.find_one({
+            "inventory_id": payload.inventory_id,
+            "date": date_str,
+        })
+
+        booked = existing.get("booked_rooms", 0) if existing else 0
+        if payload.available_rooms < booked:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{date_str} tarihinde {booked} oda zaten rezerveli. Müsait oda sayısı bundan az olamaz."
+            )
+
+        avail_doc = {
+            "hotel_id": current_hotel["_id"],
+            "inventory_id": payload.inventory_id,
+            "date": date_str,
+            "available_rooms": payload.available_rooms,
+            "booked_rooms": booked,
+            "total_rooms": inv["total_rooms"],
+            "price_per_night": payload.price_per_night,
+            "notes": payload.notes,
+            "updated_at": now_utc(),
+        }
+
+        if existing:
+            await db.daily_availability.update_one({"_id": existing["_id"]}, {"$set": avail_doc})
+        else:
+            avail_doc["_id"] = str(uuid.uuid4())
+            avail_doc["created_at"] = now_utc()
+            await db.daily_availability.insert_one(avail_doc)
+
+        updated_count += 1
+        current_date += timedelta(days=1)
+
+    await log_activity(current_hotel["_id"], "bulk_availability", "inventory", payload.inventory_id,
+                       {"date_start": payload.date_start, "date_end": payload.date_end, "available_rooms": payload.available_rooms, "days": updated_count})
+
+    return {"message": f"{updated_count} günlük müsaitlik güncellendi", "days_updated": updated_count}
+
+
+@api.get("/inventory/{inv_id}/calendar")
+async def get_inventory_calendar(
+    inv_id: str,
+    month: Optional[str] = None,  # YYYY-MM
+    current_hotel: Dict[str, Any] = Depends(get_current_hotel),
+):
+    """Belirli envanter kalemi için takvim görünümü."""
+    inv = await db.inventory.find_one({"_id": inv_id, "hotel_id": current_hotel["_id"]})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Envanter kalemi bulunamadı")
+
+    if month:
+        try:
+            year, mon = map(int, month.split("-"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Geçersiz ay formatı. YYYY-MM kullanın.")
+    else:
+        now = now_utc()
+        year, mon = now.year, now.month
+
+    # Ayın ilk ve son günü
+    first_day = date(year, mon, 1)
+    if mon == 12:
+        last_day = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        last_day = date(year, mon + 1, 1) - timedelta(days=1)
+
+    cursor = db.daily_availability.find({
+        "inventory_id": inv_id,
+        "date": {"$gte": first_day.isoformat(), "$lte": last_day.isoformat()},
+    }).sort("date", 1)
+    docs = await cursor.to_list(length=31)
+
+    # Tüm günleri doldur
+    calendar_data = {}
+    current_d = first_day
+    while current_d <= last_day:
+        calendar_data[current_d.isoformat()] = {
+            "date": current_d.isoformat(),
+            "available_rooms": inv["total_rooms"],
+            "booked_rooms": 0,
+            "total_rooms": inv["total_rooms"],
+            "price_per_night": None,
+            "has_data": False,
+        }
+        current_d += timedelta(days=1)
+
+    for d in docs:
+        calendar_data[d["date"]] = {
+            "date": d["date"],
+            "available_rooms": d["available_rooms"],
+            "booked_rooms": d.get("booked_rooms", 0),
+            "total_rooms": d.get("total_rooms", inv["total_rooms"]),
+            "price_per_night": d.get("price_per_night"),
+            "has_data": True,
+        }
+
+    return {
+        "inventory_id": inv_id,
+        "room_type_name": inv["room_type_name"],
+        "room_type": inv["room_type"],
+        "total_rooms": inv["total_rooms"],
+        "month": f"{year}-{mon:02d}",
+        "days": list(calendar_data.values()),
+    }
+
+
+@api.get("/inventory/summary/all")
+async def get_inventory_summary(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Otelin tüm envanter özeti - bugünkü durum."""
+    today_str = date.today().isoformat()
+    inv_cursor = db.inventory.find({"hotel_id": current_hotel["_id"]})
+    inventories = await inv_cursor.to_list(length=200)
+
+    summary = []
+    for inv in inventories:
+        # Bugünkü müsaitlik
+        today_avail = await db.daily_availability.find_one({
+            "inventory_id": inv["_id"],
+            "date": today_str,
+        })
+
+        # Bu ay toplam rezervasyon sayısı
+        now = now_utc()
+        first_of_month = date(now.year, now.month, 1).isoformat()
+        if now.month == 12:
+            last_of_month = date(now.year + 1, 1, 1).isoformat()
+        else:
+            last_of_month = date(now.year, now.month + 1, 1).isoformat()
+
+        month_cursor = db.daily_availability.find({
+            "inventory_id": inv["_id"],
+            "date": {"$gte": first_of_month, "$lt": last_of_month},
+            "booked_rooms": {"$gt": 0},
+        })
+        month_bookings = await month_cursor.to_list(length=31)
+        total_booked_nights = sum(d.get("booked_rooms", 0) for d in month_bookings)
+
+        # Doluluk oranı hesapla
+        total_capacity_this_month = inv["total_rooms"] * 30
+        occupancy_rate = round(total_booked_nights / total_capacity_this_month * 100, 1) if total_capacity_this_month > 0 else 0
+
+        summary.append({
+            "inventory_id": inv["_id"],
+            "room_type": inv["room_type"],
+            "room_type_name": inv["room_type_name"],
+            "total_rooms": inv["total_rooms"],
+            "today_available": today_avail["available_rooms"] if today_avail else inv["total_rooms"],
+            "today_booked": today_avail.get("booked_rooms", 0) if today_avail else 0,
+            "today_price": today_avail.get("price_per_night") if today_avail else None,
+            "month_booked_nights": total_booked_nights,
+            "occupancy_rate": occupancy_rate,
+            "capacity_label": inv.get("capacity_label"),
+            "pax": inv.get("pax"),
+        })
+
+    return {"hotel_id": current_hotel["_id"], "date": today_str, "items": summary}
+
+
+# --- Auto-update inventory on match acceptance ---
+async def _decrement_inventory_on_match(listing_doc: Dict[str, Any]) -> None:
+    """Eşleşme kabul edildiğinde envanter otomatik güncelle."""
+    hotel_id = listing_doc.get("hotel_id")
+    room_type = listing_doc.get("room_type")
+    if not hotel_id or not room_type:
+        return
+
+    # İlgili envanter kalemini bul
+    inv = await db.inventory.find_one({"hotel_id": hotel_id, "room_type": room_type})
+    if not inv:
+        return
+
+    # Tarih aralığındaki her gün için booked_rooms artır
+    date_start = listing_doc.get("date_start")
+    date_end = listing_doc.get("date_end")
+    if not date_start or not date_end:
+        return
+
+    if isinstance(date_start, datetime):
+        d_start = date_start.date()
+    else:
+        d_start = date.fromisoformat(str(date_start)[:10])
+
+    if isinstance(date_end, datetime):
+        d_end = date_end.date()
+    else:
+        d_end = date.fromisoformat(str(date_end)[:10])
+
+    current_d = d_start
+    while current_d <= d_end:
+        date_str = current_d.isoformat()
+        existing = await db.daily_availability.find_one({
+            "inventory_id": inv["_id"],
+            "date": date_str,
+        })
+
+        if existing:
+            new_booked = existing.get("booked_rooms", 0) + 1
+            new_available = max(existing.get("available_rooms", inv["total_rooms"]) - 1, 0)
+            await db.daily_availability.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {"booked_rooms": new_booked, "available_rooms": new_available, "updated_at": now_utc()}}
+            )
+        else:
+            await db.daily_availability.insert_one({
+                "_id": str(uuid.uuid4()),
+                "hotel_id": hotel_id,
+                "inventory_id": inv["_id"],
+                "date": date_str,
+                "available_rooms": max(inv["total_rooms"] - 1, 0),
+                "booked_rooms": 1,
+                "total_rooms": inv["total_rooms"],
+                "price_per_night": None,
+                "notes": None,
+                "created_at": now_utc(),
+                "updated_at": now_utc(),
+            })
+
+        current_d += timedelta(days=1)
+
+
+@api.post("/inventory/check-availability")
+async def check_availability(
+    room_type: str,
+    date_start: str,
+    date_end: str,
+    current_hotel: Dict[str, Any] = Depends(get_current_hotel),
+):
+    """Belirli tarih aralığında oda tipi müsaitliğini kontrol et (overbooking engelleme)."""
+    inv = await db.inventory.find_one({"hotel_id": current_hotel["_id"], "room_type": room_type})
+    if not inv:
+        return {"available": True, "message": "Bu oda tipi için envanter tanımı yok, ilan oluşturulabilir", "min_available": None}
+
+    try:
+        d_start = date.fromisoformat(date_start)
+        d_end = date.fromisoformat(date_end)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz tarih formatı")
+
+    min_available = inv["total_rooms"]
+    problem_dates = []
+    current_d = d_start
+    while current_d <= d_end:
+        date_str = current_d.isoformat()
+        avail = await db.daily_availability.find_one({
+            "inventory_id": inv["_id"],
+            "date": date_str,
+        })
+        if avail:
+            available = avail.get("available_rooms", inv["total_rooms"])
+            if available < min_available:
+                min_available = available
+            if available <= 0:
+                problem_dates.append(date_str)
+
+        current_d += timedelta(days=1)
+
+    return {
+        "available": min_available > 0,
+        "min_available": min_available,
+        "total_rooms": inv["total_rooms"],
+        "problem_dates": problem_dates,
+        "message": "Müsait" if min_available > 0 else f"Bu tarih aralığında müsait oda yok: {', '.join(problem_dates[:5])}",
+    }
+
+
+# ============================================================================
+# --- Advanced Pricing Engine ------------------------------------------------
+# ============================================================================
+
+def pricing_rule_to_public(doc: Dict[str, Any]) -> PricingRulePublic:
+    return PricingRulePublic(
+        id=doc["_id"],
+        hotel_id=doc["hotel_id"],
+        name=doc["name"],
+        rule_type=doc["rule_type"],
+        room_type=doc.get("room_type"),
+        multiplier=doc["multiplier"],
+        date_start=doc.get("date_start"),
+        date_end=doc.get("date_end"),
+        occupancy_threshold_min=doc.get("occupancy_threshold_min"),
+        occupancy_threshold_max=doc.get("occupancy_threshold_max"),
+        days_before_min=doc.get("days_before_min"),
+        days_before_max=doc.get("days_before_max"),
+        weekend_days=doc.get("weekend_days"),
+        is_active=doc.get("is_active", True),
+        priority=doc.get("priority", 0),
+        created_at=doc["created_at"],
+        updated_at=doc["updated_at"],
+    )
+
+
+@api.post("/pricing/rules", response_model=PricingRulePublic)
+async def create_pricing_rule(payload: PricingRuleCreate, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    rule_id = str(uuid.uuid4())
+    now = now_utc()
+    doc = {
+        "_id": rule_id,
+        "hotel_id": current_hotel["_id"],
+        **payload.model_dump(),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.pricing_rules.insert_one(doc)
+    await log_activity(current_hotel["_id"], "create", "pricing_rule", rule_id, {"name": payload.name, "type": payload.rule_type})
+    return pricing_rule_to_public(doc)
+
+
+@api.get("/pricing/rules", response_model=List[PricingRulePublic])
+async def list_pricing_rules(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    cursor = db.pricing_rules.find({"hotel_id": current_hotel["_id"]}).sort("priority", -1)
+    docs = await cursor.to_list(length=100)
+    return [pricing_rule_to_public(d) for d in docs]
+
+
+@api.put("/pricing/rules/{rule_id}", response_model=PricingRulePublic)
+async def update_pricing_rule(rule_id: str, payload: PricingRuleUpdate, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    doc = await db.pricing_rules.find_one({"_id": rule_id, "hotel_id": current_hotel["_id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Fiyatlama kuralı bulunamadı")
+
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items()}
+    if not updates:
+        return pricing_rule_to_public(doc)
+    updates["updated_at"] = now_utc()
+    await db.pricing_rules.update_one({"_id": rule_id}, {"$set": updates})
+    refreshed = await db.pricing_rules.find_one({"_id": rule_id})
+    return pricing_rule_to_public(refreshed)
+
+
+@api.delete("/pricing/rules/{rule_id}")
+async def delete_pricing_rule(rule_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    doc = await db.pricing_rules.find_one({"_id": rule_id, "hotel_id": current_hotel["_id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Fiyatlama kuralı bulunamadı")
+    await db.pricing_rules.delete_one({"_id": rule_id})
+    return {"message": "Fiyatlama kuralı silindi"}
+
+
+async def _calculate_dynamic_price(hotel_id: str, room_type: str, target_date: date, base_price: float) -> Dict[str, Any]:
+    """Belirli bir gün için dinamik fiyat hesapla."""
+    rules_cursor = db.pricing_rules.find({
+        "hotel_id": hotel_id,
+        "is_active": True,
+        "$or": [{"room_type": room_type}, {"room_type": None}],
+    }).sort("priority", -1)
+    rules = await rules_cursor.to_list(length=50)
+
+    applied_rules = []
+    final_multiplier = 1.0
+    target_str = target_date.isoformat()
+    today = date.today()
+    days_until = (target_date - today).days
+
+    for rule in rules:
+        applies = False
+        rule_type = rule["rule_type"]
+
+        if rule_type == "seasonal":
+            rs = rule.get("date_start")
+            re = rule.get("date_end")
+            if rs and re:
+                applies = rs <= target_str <= re
+
+        elif rule_type == "weekend":
+            weekend_days = rule.get("weekend_days", [4, 5, 6])  # Cuma, Cumartesi, Pazar
+            applies = target_date.weekday() in weekend_days
+
+        elif rule_type == "occupancy":
+            # Doluluk oranına bakarak karar ver
+            inv = await db.inventory.find_one({"hotel_id": hotel_id, "room_type": room_type})
+            if inv:
+                avail = await db.daily_availability.find_one({"inventory_id": inv["_id"], "date": target_str})
+                if avail and avail.get("total_rooms", 0) > 0:
+                    occupancy = avail.get("booked_rooms", 0) / avail["total_rooms"]
+                    occ_min = rule.get("occupancy_threshold_min", 0)
+                    occ_max = rule.get("occupancy_threshold_max", 1)
+                    applies = occ_min <= occupancy <= occ_max
+
+        elif rule_type == "early_bird":
+            db_min = rule.get("days_before_min", 30)
+            db_max = rule.get("days_before_max", 365)
+            applies = db_min <= days_until <= db_max
+
+        elif rule_type == "last_minute":
+            db_min = rule.get("days_before_min", 0)
+            db_max = rule.get("days_before_max", 7)
+            applies = db_min <= days_until <= db_max
+
+        elif rule_type == "holiday":
+            rs = rule.get("date_start")
+            re = rule.get("date_end")
+            if rs and re:
+                applies = rs <= target_str <= re
+
+        if applies:
+            final_multiplier *= rule["multiplier"]
+            applied_rules.append({
+                "rule_id": rule["_id"],
+                "name": rule["name"],
+                "type": rule_type,
+                "multiplier": rule["multiplier"],
+            })
+
+    calculated_price = round(base_price * final_multiplier, 2)
+
+    return {
+        "base_price": base_price,
+        "final_price": calculated_price,
+        "final_multiplier": round(final_multiplier, 4),
+        "applied_rules": applied_rules,
+        "date": target_str,
+    }
+
+
+@api.post("/pricing/calculate")
+async def calculate_price(payload: PriceCalculateRequest, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Tarih aralığı için dinamik fiyat hesapla."""
+    try:
+        d_start = date.fromisoformat(payload.date_start)
+        d_end = date.fromisoformat(payload.date_end)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz tarih formatı")
+
+    if d_start > d_end:
+        raise HTTPException(status_code=400, detail="Başlangıç tarihi bitiş tarihinden sonra olamaz")
+
+    days = []
+    total_price = 0.0
+    current_d = d_start
+    while current_d <= d_end:
+        day_result = await _calculate_dynamic_price(
+            current_hotel["_id"], payload.room_type, current_d, payload.base_price
+        )
+        days.append(day_result)
+        total_price += day_result["final_price"]
+        current_d += timedelta(days=1)
+
+    night_count = len(days)
+    avg_price = round(total_price / night_count, 2) if night_count > 0 else 0
+
+    return {
+        "room_type": payload.room_type,
+        "date_start": payload.date_start,
+        "date_end": payload.date_end,
+        "base_price": payload.base_price,
+        "total_price": round(total_price, 2),
+        "average_price": avg_price,
+        "night_count": night_count,
+        "daily_breakdown": days,
+    }
+
+
+@api.get("/pricing/market-comparison")
+async def market_comparison(
+    room_type: Optional[str] = None,
+    region: Optional[str] = None,
+    current_hotel: Dict[str, Any] = Depends(get_current_hotel),
+):
+    """Piyasa karşılaştırması - benzer ilanlara göre fiyat önerisi."""
+    query: Dict[str, Any] = {}
+    if room_type:
+        query["room_type"] = room_type
+    if region:
+        query["region"] = region
+
+    # Aktif ilanları al (süresi geçmemiş)
+    query["date_end"] = {"$gte": now_utc()}
+    cursor = db.availability_listings.find(query).sort("created_at", -1).limit(100)
+    listings = await cursor.to_list(length=100)
+
+    if not listings:
+        return {
+            "room_type": room_type,
+            "region": region,
+            "sample_size": 0,
+            "avg_price_min": None,
+            "avg_price_max": None,
+            "min_price": None,
+            "max_price": None,
+            "median_price": None,
+            "my_avg_price": None,
+            "recommendation": "Yeterli veri yok",
+        }
+
+    # Kendi ilanlarım vs. piyasa
+    my_listings = [l for l in listings if l["hotel_id"] == current_hotel["_id"]]
+    other_listings = [l for l in listings if l["hotel_id"] != current_hotel["_id"]]
+
+    all_prices_min = [l["price_min"] for l in listings if l.get("price_min")]
+    all_prices_max = [l["price_max"] for l in listings if l.get("price_max")]
+
+    avg_min = round(sum(all_prices_min) / len(all_prices_min), 2) if all_prices_min else None
+    avg_max = round(sum(all_prices_max) / len(all_prices_max), 2) if all_prices_max else None
+
+    sorted_prices = sorted(all_prices_min)
+    median_price = sorted_prices[len(sorted_prices) // 2] if sorted_prices else None
+
+    my_prices = [l["price_min"] for l in my_listings if l.get("price_min")]
+    my_avg = round(sum(my_prices) / len(my_prices), 2) if my_prices else None
+
+    # Öneri
+    recommendation = "Fiyatlarınız piyasa ortalamasında"
+    if my_avg and avg_min:
+        if my_avg > avg_min * 1.2:
+            recommendation = "Fiyatlarınız piyasa ortalamasının %20'den fazla üstünde. İndirim düşünebilirsiniz."
+        elif my_avg < avg_min * 0.8:
+            recommendation = "Fiyatlarınız piyasa ortalamasının %20'den fazla altında. Fiyat artışı düşünebilirsiniz."
+
+    return {
+        "room_type": room_type,
+        "region": region,
+        "sample_size": len(listings),
+        "my_listing_count": len(my_listings),
+        "other_listing_count": len(other_listings),
+        "avg_price_min": avg_min,
+        "avg_price_max": avg_max,
+        "min_price": min(all_prices_min) if all_prices_min else None,
+        "max_price": max(all_prices_max) if all_prices_max else None,
+        "median_price": median_price,
+        "my_avg_price": my_avg,
+        "recommendation": recommendation,
+    }
+
+
+@api.get("/pricing/history")
+async def price_history(
+    room_type: Optional[str] = None,
+    months: int = 6,
+    current_hotel: Dict[str, Any] = Depends(get_current_hotel),
+):
+    """Fiyat geçmişi - son N ay."""
+    query: Dict[str, Any] = {"hotel_id": current_hotel["_id"]}
+    if room_type:
+        query["room_type"] = room_type
+
+    # Son N ay
+    now = now_utc()
+    cutoff = now - timedelta(days=months * 30)
+    query["created_at"] = {"$gte": cutoff}
+
+    cursor = db.availability_listings.find(query).sort("created_at", -1)
+    listings = await cursor.to_list(length=500)
+
+    monthly_data: Dict[str, Dict[str, Any]] = {}
+    for l in listings:
+        month_key = l["created_at"].strftime("%Y-%m")
+        if month_key not in monthly_data:
+            monthly_data[month_key] = {"prices_min": [], "prices_max": [], "count": 0}
+        monthly_data[month_key]["prices_min"].append(l.get("price_min", 0))
+        monthly_data[month_key]["prices_max"].append(l.get("price_max", 0))
+        monthly_data[month_key]["count"] += 1
+
+    history = []
+    for month_key in sorted(monthly_data.keys()):
+        data = monthly_data[month_key]
+        history.append({
+            "month": month_key,
+            "avg_price_min": round(sum(data["prices_min"]) / len(data["prices_min"]), 2),
+            "avg_price_max": round(sum(data["prices_max"]) / len(data["prices_max"]), 2),
+            "listing_count": data["count"],
+            "min_price": min(data["prices_min"]),
+            "max_price": max(data["prices_max"]),
+        })
+
+    return {"room_type": room_type, "months": months, "history": history}
+
+
+# ============================================================================
+# --- Performance Tests & Monitoring -----------------------------------------
+# ============================================================================
+
+@api.get("/performance/health")
+async def performance_health():
+    """Detaylı sağlık kontrolü — DB bağlantı, koleksiyon sayıları, yanıt süresi."""
+    start = time.time()
+    checks = {}
+
+    # MongoDB bağlantı testi
+    try:
+        await db.command("ping")
+        checks["mongodb"] = {"status": "ok", "latency_ms": round((time.time() - start) * 1000, 2)}
+    except Exception as e:
+        checks["mongodb"] = {"status": "error", "detail": str(e)}
+
+    # Koleksiyon sayıları
+    t0 = time.time()
+    collection_counts = {}
+    for coll_name in ["hotels", "availability_listings", "requests", "matches", "inventory", "daily_availability", "pricing_rules", "room_templates"]:
+        try:
+            count = await db[coll_name].estimated_document_count()
+            collection_counts[coll_name] = count
+        except Exception:
+            collection_counts[coll_name] = -1
+    checks["collections"] = {"counts": collection_counts, "query_time_ms": round((time.time() - t0) * 1000, 2)}
+
+    total_time = round((time.time() - start) * 1000, 2)
+
+    return {
+        "status": "healthy" if all(c.get("status") != "error" for c in checks.values() if isinstance(c, dict) and "status" in c) else "degraded",
+        "total_response_ms": total_time,
+        "checks": checks,
+        "timestamp": now_utc().isoformat(),
+    }
+
+
+@api.get("/performance/benchmark")
+async def performance_benchmark(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """API endpoint performans benchmark'ı."""
+    results = {}
+
+    # 1. DB Read testi
+    t0 = time.time()
+    await db.hotels.find_one({"_id": current_hotel["_id"]})
+    results["db_single_read"] = {"time_ms": round((time.time() - t0) * 1000, 2)}
+
+    # 2. DB List testi
+    t0 = time.time()
+    cursor = db.availability_listings.find({}).limit(50)
+    await cursor.to_list(length=50)
+    results["db_list_50"] = {"time_ms": round((time.time() - t0) * 1000, 2)}
+
+    # 3. DB Aggregation testi
+    t0 = time.time()
+    pipeline = [
+        {"$group": {"_id": "$region", "count": {"$sum": 1}}},
+    ]
+    agg_cursor = db.availability_listings.aggregate(pipeline)
+    await agg_cursor.to_list(length=100)
+    results["db_aggregation"] = {"time_ms": round((time.time() - t0) * 1000, 2)}
+
+    # 4. Complex query testi
+    t0 = time.time()
+    await db.availability_listings.find({
+        "date_end": {"$gte": now_utc()},
+        "is_locked": False,
+    }).sort("created_at", -1).to_list(length=100)
+    results["complex_query"] = {"time_ms": round((time.time() - t0) * 1000, 2)}
+
+    # 5. Write testi (insert & delete)
+    t0 = time.time()
+    test_id = str(uuid.uuid4())
+    await db._perf_test.insert_one({"_id": test_id, "ts": now_utc()})
+    await db._perf_test.delete_one({"_id": test_id})
+    results["db_write_delete"] = {"time_ms": round((time.time() - t0) * 1000, 2)}
+
+    # 6. Inventory query testi
+    t0 = time.time()
+    await db.daily_availability.find({
+        "hotel_id": current_hotel["_id"],
+        "date": date.today().isoformat(),
+    }).to_list(length=50)
+    results["inventory_query"] = {"time_ms": round((time.time() - t0) * 1000, 2)}
+
+    # Toplam
+    total_ms = sum(r["time_ms"] for r in results.values())
+    grade = "A" if total_ms < 100 else "B" if total_ms < 250 else "C" if total_ms < 500 else "D"
+
+    return {
+        "benchmarks": results,
+        "total_ms": round(total_ms, 2),
+        "grade": grade,
+        "grade_description": {
+            "A": "Mükemmel (<100ms)",
+            "B": "İyi (<250ms)",
+            "C": "Orta (<500ms)",
+            "D": "İyileştirme gerekli (>500ms)",
+        }[grade],
+        "timestamp": now_utc().isoformat(),
+    }
+
+
+@api.get("/performance/db-indexes")
+async def list_db_indexes(admin: Dict[str, Any] = Depends(get_current_admin)):
+    """Mevcut DB indekslerini listele (sadece admin)."""
+    indexes = {}
+    for coll_name in ["hotels", "availability_listings", "requests", "matches", "inventory", "daily_availability", "pricing_rules"]:
+        try:
+            idx_list = await db[coll_name].index_information()
+            indexes[coll_name] = {name: {"keys": list(info["key"])} for name, info in idx_list.items()}
+        except Exception as e:
+            indexes[coll_name] = {"error": str(e)}
+
+    return indexes
+
+
+# --- DB Indexes setup -------------------------------------------------------
+
+async def ensure_indexes():
+    """Performans indekslerini oluştur."""
+    try:
+        # Hotels
+        await db.hotels.create_index("email", unique=True)
+        await db.hotels.create_index("region")
+        await db.hotels.create_index("approval_status")
+
+        # Availability Listings
+        await db.availability_listings.create_index("hotel_id")
+        await db.availability_listings.create_index("region")
+        await db.availability_listings.create_index("room_type")
+        await db.availability_listings.create_index("date_end")
+        await db.availability_listings.create_index("availability_status")
+        await db.availability_listings.create_index("created_at")
+        await db.availability_listings.create_index([("region", 1), ("date_end", -1)])
+        await db.availability_listings.create_index([("hotel_id", 1), ("created_at", -1)])
+
+        # Requests
+        await db.requests.create_index("from_hotel_id")
+        await db.requests.create_index("to_hotel_id")
+        await db.requests.create_index("listing_id")
+        await db.requests.create_index("status")
+        await db.requests.create_index([("from_hotel_id", 1), ("created_at", -1)])
+        await db.requests.create_index([("to_hotel_id", 1), ("created_at", -1)])
+
+        # Matches
+        await db.matches.create_index("hotel_a_id")
+        await db.matches.create_index("hotel_b_id")
+        await db.matches.create_index([("hotel_a_id", 1), ("hotel_b_id", 1)])
+        await db.matches.create_index("accepted_at")
+
+        # Inventory
+        await db.inventory.create_index("hotel_id")
+        await db.inventory.create_index([("hotel_id", 1), ("room_type", 1)])
+
+        # Daily Availability
+        await db.daily_availability.create_index("inventory_id")
+        await db.daily_availability.create_index("hotel_id")
+        await db.daily_availability.create_index("date")
+        await db.daily_availability.create_index([("inventory_id", 1), ("date", 1)], unique=True)
+
+        # Pricing Rules
+        await db.pricing_rules.create_index("hotel_id")
+        await db.pricing_rules.create_index([("hotel_id", 1), ("is_active", 1), ("priority", -1)])
+
+        # Activity Logs
+        await db.activity_logs.create_index("actor_hotel_id")
+        await db.activity_logs.create_index("created_at")
+
+        # Room Templates
+        await db.room_templates.create_index("hotel_id")
+
+    except Exception as e:
+        print(f"Index creation warning: {e}")
+
+
 # Healthcheck / root
 
 @api.get("/")
 async def root() -> Dict[str, str]:
-    return {"message": "CapX Sapanca-Kartepe API v2"}
+    return {"message": "CapX Sapanca-Kartepe API v3"}
 
 
 app.include_router(api)
@@ -1981,6 +2841,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Uygulama başlangıcında indeksleri oluştur."""
+    await ensure_indexes()
 
 
 @app.on_event("shutdown")
