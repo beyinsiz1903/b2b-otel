@@ -3038,6 +3038,9 @@ const ProfilePage = () => {
             <div className={`tab ${tab === "sheets" ? "active" : ""}`} onClick={() => setTab("sheets")}>
               📊 Google Sheets
             </div>
+            <div className={`tab ${tab === "kvkk" ? "active" : ""}`} onClick={() => setTab("kvkk")}>
+              🔒 KVKK
+            </div>
           </div>
 
           {success && <div className="success mb-2">{success}</div>}
