@@ -2728,8 +2728,8 @@ async def performance_benchmark(current_hotel: Dict[str, Any] = Depends(get_curr
     # 5. Write testi (insert & delete)
     t0 = time.time()
     test_id = str(uuid.uuid4())
-    await db._perf_test.insert_one({"_id": test_id, "ts": now_utc()})
-    await db._perf_test.delete_one({"_id": test_id})
+    await db["perf_test"].insert_one({"_id": test_id, "ts": now_utc()})
+    await db["perf_test"].delete_one({"_id": test_id})
     results["db_write_delete"] = {"time_ms": round((time.time() - t0) * 1000, 2)}
 
     # 6. Inventory query testi
