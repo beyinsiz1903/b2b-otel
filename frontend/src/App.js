@@ -357,6 +357,9 @@ const Layout = ({ children }) => {
               <Link to="/admin" className={isActive("/admin")}>
                 ⚙️ Admin Panel
               </Link>
+              <Link to="/performance" className={isActive("/performance")}>
+                🚀 Performans
+              </Link>
             </>
           )}
         </nav>
