@@ -48,7 +48,7 @@ class CapXTester:
         if method == "GET":
             return self.session.get(url, headers=headers, params=params)
         elif method == "POST":
-            return self.session.post(url, headers=headers, json=data)
+            return self.session.post(url, headers=headers, json=data, params=params)
         elif method == "PUT":
             return self.session.put(url, headers=headers, json=data)
         elif method == "DELETE":
