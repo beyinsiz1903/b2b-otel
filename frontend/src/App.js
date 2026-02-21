@@ -875,30 +875,18 @@ const ListingsPage = () => {
                 </select>
               </label>
               <label className="field">
+                <span>Oda Tipi</span>
+                <select value={filters.room_type} onChange={(e) => setFilters({ ...filters, room_type: e.target.value })}>
+                  <option value="">Tümü</option>
+                  {ROOM_TYPES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+              </label>
+              <label className="field">
                 <span>Konsept / Ara</span>
                 <input
                   value={filters.concept}
                   onChange={(e) => setFilters({ ...filters, concept: e.target.value })}
                   placeholder="Bungalov, Butik..."
-                />
-              </label>
-              <label className="field">
-                <span>Min. Kişi Sayısı</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={filters.pax_min}
-                  onChange={(e) => setFilters({ ...filters, pax_min: e.target.value })}
-                  placeholder="Örn: 2"
-                />
-              </label>
-              <label className="field">
-                <span>Maks. Fiyat (TL/gece)</span>
-                <input
-                  type="number"
-                  value={filters.price_max}
-                  onChange={(e) => setFilters({ ...filters, price_max: e.target.value })}
-                  placeholder="Örn: 10000"
                 />
               </label>
               <label className="field">
@@ -909,6 +897,38 @@ const ListingsPage = () => {
                   <option value="limited">Sınırlı</option>
                   <option value="alternative">Alternatif</option>
                 </select>
+              </label>
+            </div>
+            <div className="filter-row">
+              <label className="field">
+                <span>Min. Kişi</span>
+                <input type="number" min="1" value={filters.pax_min} onChange={(e) => setFilters({ ...filters, pax_min: e.target.value })} placeholder="Min" />
+              </label>
+              <label className="field">
+                <span>Maks. Kişi</span>
+                <input type="number" min="1" value={filters.pax_max} onChange={(e) => setFilters({ ...filters, pax_max: e.target.value })} placeholder="Maks" />
+              </label>
+              <label className="field">
+                <span>Min. Fiyat (₺)</span>
+                <input type="number" value={filters.price_min} onChange={(e) => setFilters({ ...filters, price_min: e.target.value })} placeholder="Min" />
+              </label>
+              <label className="field">
+                <span>Maks. Fiyat (₺)</span>
+                <input type="number" value={filters.price_max} onChange={(e) => setFilters({ ...filters, price_max: e.target.value })} placeholder="Maks" />
+              </label>
+            </div>
+            <div className="filter-row">
+              <label className="field">
+                <span>Tarih Başlangıç</span>
+                <input type="date" value={filters.date_from} onChange={(e) => setFilters({ ...filters, date_from: e.target.value })} />
+              </label>
+              <label className="field">
+                <span>Tarih Bitiş</span>
+                <input type="date" value={filters.date_to} onChange={(e) => setFilters({ ...filters, date_to: e.target.value })} />
+              </label>
+              <label className="field">
+                <span>Özellikler</span>
+                <input value={filters.features} onChange={(e) => setFilters({ ...filters, features: e.target.value })} placeholder="Jakuzi, Şömine..." />
               </label>
               <label className="field" style={{ justifyContent: "flex-end" }}>
                 <span>&nbsp;</span>
