@@ -5332,6 +5332,10 @@ const App = () => (
         <Route path="/inventory" element={<ProtectedRoute><InventoryPage /></ProtectedRoute>} />
         <Route path="/pricing" element={<ProtectedRoute><PricingPage /></ProtectedRoute>} />
         <Route path="/performance" element={<ProtectedRoute><PerformancePage /></ProtectedRoute>} />
+        <Route path="/payments" element={<ProtectedRoute><PaymentsPage /></ProtectedRoute>} />
+        <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
+        <Route path="/subscription" element={<ProtectedRoute><SubscriptionPage /></ProtectedRoute>} />
+        <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
