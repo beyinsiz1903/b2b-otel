@@ -3783,6 +3783,68 @@ const AdminPage = () => {
           </div>
         </Modal>
       )}
+
+      {/* Revenue Tab */}
+      {tab === "revenue" && !loading && (
+        <div>
+          {adminRevenue ? (
+            <>
+              <div className="cards-row" style={{ marginBottom: "1.5rem" }}>
+                <div className="kpi-card kpi-green"><span>Toplam Gelir</span><strong>₺{adminRevenue.total_revenue?.toLocaleString("tr-TR")}</strong></div>
+                <div className="kpi-card kpi-blue"><span>Toplam Eşleşme</span><strong>{adminRevenue.total_matches}</strong></div>
+                <div className="kpi-card kpi-orange"><span>Ödenen</span><strong>{adminRevenue.paid_matches}</strong></div>
+                <div className="kpi-card"><span>Ödenmemiş</span><strong style={{ color: "#ef4444" }}>{adminRevenue.unpaid_matches}</strong></div>
+              </div>
+              <div className="reports-grid">
+                <div className="report-card">
+                  <h3>📅 Aylık Gelir</h3>
+                  <div className="stats-list">
+                    {Object.entries(adminRevenue.monthly || {}).sort().map(([month, data]) => (
+                      <div key={month} className="stats-row"><span className="stats-row-label">{month}</span><span className="stats-row-value">₺{data.revenue?.toLocaleString("tr-TR")} ({data.matches} eşleşme, {data.payments} ödeme)</span></div>
+                    ))}
+                  </div>
+                </div>
+                <div className="report-card">
+                  <h3>🌍 Bölge Bazlı Gelir</h3>
+                  <div className="stats-list">
+                    {Object.entries(adminRevenue.region_breakdown || {}).map(([region, data]) => (
+                      <div key={region} className="stats-row"><span className="stats-row-label">{region}</span><span className="stats-row-value">₺{data.revenue?.toLocaleString("tr-TR")} ({data.matches} eşleşme)</span></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : <div className="text-muted">Gelir verisi yok</div>}
+        </div>
+      )}
+
+      {/* Regions Tab */}
+      {tab === "regions" && !loading && (
+        <div>
+          <h2 style={{ marginBottom: "1rem" }}>🌍 Bölge Yönetimi</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1rem" }}>
+            {regionPricing.map((rp) => {
+              const stats = regionStats?.[rp.region] || {};
+              return (
+                <div key={rp.region} className="card">
+                  <h3>{rp.label}</h3>
+                  <div className="stats-list" style={{ margin: "1rem 0" }}>
+                    <div className="stats-row"><span className="stats-row-label">Otel Sayısı</span><span className="stats-row-value">{stats.hotels || 0}</span></div>
+                    <div className="stats-row"><span className="stats-row-label">Aktif İlan</span><span className="stats-row-value">{stats.active_listings || 0}</span></div>
+                    <div className="stats-row"><span className="stats-row-label">Toplam İlan</span><span className="stats-row-value">{stats.total_listings || 0}</span></div>
+                    <div className="stats-row"><span className="stats-row-label">Varsayılan Ücret</span><span className="stats-row-value">₺{rp.default_fee}</span></div>
+                    <div className="stats-row"><span className="stats-row-label">Aktif Ücret</span><span className="stats-row-value" style={{ fontWeight: 700, color: "#1a3a2a" }}>₺{rp.active_fee}</span></div>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                    <input type="number" defaultValue={rp.active_fee} id={`fee-${rp.region}`} style={{ width: "100px", padding: "0.4rem" }} />
+                    <button className="btn-primary btn-sm" onClick={() => updateRegionFee(rp.region, document.getElementById(`fee-${rp.region}`).value)}>Güncelle</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };
