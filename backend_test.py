@@ -376,13 +376,28 @@ class CapXTester:
             self.log_test("Overbooking prevention", False, "No inventory available for testing")
             return False
         
-        inventory_id = self.inventory_ids[0]
+        # Create a specific inventory item for this test
+        create_data = {
+            "room_type": "test_bungalov",
+            "room_type_name": "Test Overbooking Bungalov",
+            "total_rooms": 10,
+            "capacity_label": "2+1",
+            "pax": 3
+        }
+        
+        response = self.make_request("POST", "/inventory", create_data)
+        if response.status_code != 200:
+            self.log_test("Overbooking prevention setup", False, f"Failed to create test inventory")
+            return False
+        
+        test_inventory = response.json()
+        test_inventory_id = test_inventory["id"]
         
         # Set availability to only 2 rooms for tomorrow
         tomorrow = date.today() + timedelta(days=1)
         
         bulk_data = {
-            "inventory_id": inventory_id,
+            "inventory_id": test_inventory_id,
             "date_start": tomorrow.isoformat(),
             "date_end": tomorrow.isoformat(),
             "available_rooms": 2,
@@ -392,15 +407,21 @@ class CapXTester:
         response = self.make_request("POST", "/inventory/availability/bulk", bulk_data)
         if response.status_code != 200:
             self.log_test("Overbooking prevention setup", False, f"Failed to set limited availability")
+            # Clean up
+            self.make_request("DELETE", f"/inventory/{test_inventory_id}")
             return False
         
         # Check availability - should show limited rooms
         check_params = {
-            "room_type": "bungalov",
+            "room_type": "test_bungalov",
             "date_start": tomorrow.isoformat(),
             "date_end": tomorrow.isoformat()
         }
         response = self.make_request("POST", "/inventory/check-availability", params=check_params)
+        
+        # Clean up test inventory
+        self.make_request("DELETE", f"/inventory/{test_inventory_id}")
+        
         if response.status_code == 200:
             availability = response.json()
             if availability.get("min_available") == 2:
@@ -410,7 +431,7 @@ class CapXTester:
                 self.log_test("Overbooking prevention", False, f"Expected 2 available rooms, got {availability.get('min_available')}")
                 return False
         else:
-            self.log_test("Overbooking prevention", False, f"Availability check failed")
+            self.log_test("Overbooking prevention", False, f"Availability check failed: Status {response.status_code}")
             return False
     
     def cleanup(self) -> None:
