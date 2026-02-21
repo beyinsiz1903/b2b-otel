@@ -330,6 +330,9 @@ const Layout = ({ children }) => {
           <Link to="/availability" className={isActive("/availability")} data-testid="nav-availability">
             🏠 Kendi Kapasitem
           </Link>
+          <Link to="/inventory" className={isActive("/inventory")} data-testid="nav-inventory">
+            📦 Envanter
+          </Link>
           <Link to="/requests" className={isActive("/requests")} data-testid="nav-requests">
             📋 Talepler
           </Link>
@@ -338,6 +341,9 @@ const Layout = ({ children }) => {
           </Link>
           <div className="shell-nav-divider" />
           <div className="shell-nav-label">Hesap</div>
+          <Link to="/pricing" className={isActive("/pricing")}>
+            💰 Fiyatlama
+          </Link>
           <Link to="/reports" className={isActive("/reports")}>
             📈 Raporlar
           </Link>
