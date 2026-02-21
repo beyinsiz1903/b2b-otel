@@ -609,9 +609,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Inventory CRUD ve bulk availability"
-    - "Pricing rules ve dynamic calculator"
-    - "Performance health ve benchmark"
+    - "All inventory, pricing, and performance endpoints successfully tested"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
