@@ -3022,6 +3022,28 @@ async def ensure_indexes():
         # Room Templates
         await db.room_templates.create_index("hotel_id")
 
+        # Payments
+        await db.payments.create_index("hotel_id")
+        await db.payments.create_index("match_id")
+        await db.payments.create_index([("hotel_id", 1), ("status", 1)])
+
+        # Invoices
+        await db.invoices.create_index("hotel_id")
+        await db.invoices.create_index("payment_id")
+        await db.invoices.create_index("invoice_number", unique=True)
+
+        # Subscriptions
+        await db.subscriptions.create_index("hotel_id")
+        await db.subscriptions.create_index([("hotel_id", 1), ("status", 1)])
+
+        # Notifications
+        await db.notifications.create_index("hotel_id")
+        await db.notifications.create_index([("hotel_id", 1), ("is_read", 1)])
+        await db.notifications.create_index([("hotel_id", 1), ("created_at", -1)])
+
+        # KVKK Requests
+        await db.kvkk_requests.create_index("hotel_id")
+
     except Exception as e:
         print(f"Index creation warning: {e}")
 
