@@ -3463,6 +3463,32 @@ const AdminPage = () => {
     catch (err) { alert(err.response?.data?.detail || "İşlem başarısız."); }
   };
 
+  const loadAdminRevenue = async () => {
+    setLoading(true);
+    try { const res = await axios.get("/admin/revenue"); setAdminRevenue(res.data); }
+    catch {} finally { setLoading(false); }
+  };
+
+  const loadRegionData = async () => {
+    setLoading(true);
+    try {
+      const [pricing, stats] = await Promise.all([
+        axios.get("/admin/region-pricing"),
+        axios.get("/admin/region-stats"),
+      ]);
+      setRegionPricing(pricing.data);
+      setRegionStats(stats.data);
+    } catch {} finally { setLoading(false); }
+  };
+
+  const updateRegionFee = async (region, newFee) => {
+    try {
+      await axios.put(`/admin/region-pricing/${region}`, { match_fee: parseFloat(newFee) });
+      setActionMsg(`✅ ${region} bölgesi ücreti güncellendi`);
+      loadRegionData();
+    } catch (err) { alert(err.response?.data?.detail || "Hata"); }
+  };
+
   const approvalStatusChip = (s) => {
     if (s === "approved") return <span style={{ fontSize: "0.72rem", background: "#dcfce7", color: "#166534", borderRadius: "999px", padding: "0.15rem 0.6rem", fontWeight: 700 }}>✅ Onaylı</span>;
     if (s === "pending_review") return <span style={{ fontSize: "0.72rem", background: "#fef9c3", color: "#713f12", borderRadius: "999px", padding: "0.15rem 0.6rem", fontWeight: 700 }}>⏳ Bekliyor</span>;
