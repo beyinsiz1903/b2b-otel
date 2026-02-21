@@ -760,15 +760,152 @@ metadata:
         agent: "testing"
         comment: "COMPREHENSIVE TESTING COMPLETED. ✅ Admin region management fully functional: 1) Region pricing retrieval for all 6 regions, 2) Dynamic pricing updates (tested Abant 225 TL), 3) Platform revenue dashboard with monthly breakdown, 4) Region statistics (hotel counts, listing activity). Admin access control working correctly."
 
+  - task: "Login Page and Authentication"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "LOGIN & DASHBOARD: ✅ Login page renders correctly with test credentials admin@test.com/Admin123. ✅ Authentication flow works perfectly. ✅ Dashboard loads after successful login. Login form has proper data-testid attributes for testing."
+
+  - task: "Navigation Sidebar - Finans Section"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "SIDEBAR NAVIGATION: ✅ 'Finans' section label present in sidebar. ✅ All 3 menu items found: 💳 Ödemeler, 🧾 Faturalar, ⭐ Abonelik. ✅ Notification bell (🔔) icon in header with badge count (shows '1' for unread notifications). All navigation links working correctly."
+
+  - task: "Enhanced Filters on Kapasiteler (/listings)"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "ENHANCED FILTERS: ✅ All filter fields present: BÖLGE (region dropdown), ODA TİPİ (room type), KONSEPT/ARA (concept/search), DURUM (status), MIN. KİŞİ / MAKS. KİŞİ (capacity filters), MIN. FİYAT / MAKS. FİYAT (price filters), TARİH BAŞLANGIÇ / TARİH BİTİŞ (date range), ÖZELLİKLER (features with checkbox). Filter panel displays correctly with 'Filtrele' submit button and 'Sıfırla' reset button."
+
+  - task: "Ödemeler Page (/payments)"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "ÖDEMELER PAGE: ✅ Page loads successfully. ✅ 'Ödeme Geçmişi' (payment history) section displays. ✅ Payment table shows columns: Referans, Tutar, Yöntem, Durum, Fatura, Tarih. ✅ Shows payment record PAY-57201C50 with amount ₺250.00, status TAMAMLANDI, and link to invoice. Payment history section working correctly."
+
+  - task: "Faturalar Page (/invoices)"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "FATURALAR PAGE: ✅ Page loads successfully. ✅ Invoice list/table displays correctly. ✅ Shows invoice INV-2026-000001 with details: Ara Toplam ₺250.00, KDV (20%) ₺50.00, Toplam ₺300.00, Durum: KESİLDİ (issued), Date: 21.02.2026. ✅ 'Detay' button available for viewing invoice details. Invoice system working correctly."
+
+  - task: "Abonelik Page (/subscription) - 4 Plans"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "ABONELIK PAGE: ✅ All 4 subscription plans display correctly: 1) Ücretsiz (₺0/ay, 5 eşleşme/ay limit), 2) Temel (₺1500/ay, 20 eşleşme/ay), 3) Premium (₺3500/ay, sınırsız eşleşme), 4) Kurumsal (₺7500/ay, çoklu bölge + özel entegrasyon). ✅ Each plan shows features, pricing, and subscription buttons ('Aylık Seç', 'Yıllık Seç'). ✅ Current active plan highlighted (Ücretsiz - AKTİF). Subscription system UI fully functional."
+
+  - task: "Bildirimler Page (/notifications)"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "BİLDİRİMLER PAGE: ✅ Page loads via notification bell click. ✅ Notification list displays with multiple notifications (Ödeme Tamamlandı, Abonelik Aktif, Eşleşme Onaylandı, Yeni Talep Alındı, Silme Talebi Alındı, etc.). ✅ Each notification shows icon, title, description, and timestamp. ✅ 'Tümünü Okundu Yap' button present and functional. ✅ Filter dropdown (Tümü) available. Notification system working perfectly."
+
+  - task: "Raporlar Page (/reports) - 5 Tabs"
+    implemented: true
+    working: false
+    file: "frontend/src/App.js"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "RAPORLAR PAGE ISSUE: ❌ Page shows error 'İstatistikler yüklenemedi.' (Statistics could not be loaded). ❌ 5 tabs defined in code (📊 Genel Bakış, 📋 Talep İstatistikleri, 🌍 Pazar Trendleri, 🏆 Performans, 💰 Gelir) but NOT VISIBLE due to API error. ROOT CAUSE: Backend GET /api/stats endpoint failing with HTTP 520 error. Backend error log shows: 'TypeError: can't compare offset-naive and offset-aware datetimes' at line 1435 in server.py in get_stats() function. The error occurs when comparing date_end from listings with now variable due to timezone awareness mismatch. FIX REQUIRED: Backend datetime comparison needs timezone handling fix."
+
+  - task: "Admin Panel (/admin) - Gelir & Bölgeler Tabs"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "ADMIN PANEL: ✅ Admin panel loads for admin users. ✅ All tabs present: Üyelik Talepleri, Genel Bakış, Tüm Oteller, Eşleşmeler, 💰 Gelir, 🌍 Bölgeler. ✅ GELİR TAB: Shows revenue metrics (Toplam Gelir ₺250, Toplam Eşleşme: 1, Ödenen: 1, Ödenmemiş: 0) with monthly breakdown (AYLIK GELİR) and regional revenue (BÖLGE BAZLI GELİR showing Sapanca ₺250). ✅ BÖLGELER TAB: Displays all 6 regions with complete data: Sapanca (1 otel, 0 aktif ilan, 1 toplam ilan, ₺250 varsayılan/aktif ücret), Kartepe (1 otel, 0 aktif, ₺250), Abant (0 otel, ₺225), Ayder (0 otel, ₺300), Kaş (0 otel, ₺350), Alaçatı (0 otel, ₺300). ✅ Each region has 'Güncelle' button for pricing updates. Both tabs fully functional."
+
+  - task: "Profile - KVKK Tab"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "PROFILE KVKK TAB: ✅ Profile page loads correctly. ✅ Tab navigation shows: Profil Bilgileri, Şifre Değiştir, 📊 Google Sheets, 🔒 KVKK. ✅ KVKK tab opens successfully. ✅ Two main sections present: 1) '📥 Verilerimi Dışa Aktar' section with '📥 Dışa Aktar' button to download personal data in JSON format, 2) '🗑️ Hesap Silme Talebi' section with '🗑️ Silme Talebi Oluştur' button to request account deletion (30-day process). ✅ KVKK compliance text explains rights under Turkish law 6698. Both buttons functional."
+
+  - task: "Region Dropdowns (6 Regions)"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "REGION DROPDOWNS: ✅ Region dropdown (BÖLGE) present in filters on Kapasiteler page and Profile page. ✅ All 6 regions available: Sapanca, Kartepe, Abant, Ayder, Kaş (displayed as 'Kas' in some dropdowns), Alaçatı (displayed as 'Alacati' in some dropdowns). ✅ Region selection working across the platform. ✅ Admin panel Bölgeler tab confirms all 6 regions are properly configured with pricing."
+
 test_plan:
   current_focus:
-    - "All v4 backend endpoints successfully tested and working"
-  stuck_tasks: []
-  test_all: true
-  test_priority: "completed"
+    - "Raporlar Page (/reports) - Fix GET /api/stats endpoint datetime comparison error"
+  stuck_tasks:
+    - "Raporlar Page (/reports) - 5 Tabs"
+  test_all: false
+  test_priority: "high_first"
 
 agent_communication:
   - agent: "main"
     message: "Massive v4 update: 1) 6 regions (added Abant, Ayder, Kaş, Alaçatı), 2) Mock payment system with auto-invoice, 3) Subscription plans, 4) Notification system, 5) Revenue reports, 6) Market trends, 7) Performance scores, 8) KVKK compliance, 9) Rate limiting, 10) Region-based pricing, 11) Enhanced filters, 12) Admin revenue/region management. Test hotel: admin@test.com / Admin123. Test all new /api/ endpoints."
   - agent: "testing"
     message: "COMPREHENSIVE V4 BACKEND TESTING COMPLETED SUCCESSFULLY! ✅ All 12 new endpoint groups tested with 100% success rate (25/25 tests passed). Created test scenarios with 2 hotels, 1 listing, 1 request, 1 match, payment flow, and invoice generation. All systems operational: regions API, enhanced filters, payment system, invoices, subscriptions, notifications, reports, market trends, performance scores, KVKV compliance, and admin management. Platform ready for production use."
+  - agent: "main"
+    message: "Testing request: Test new v4 frontend features - Login, Navigation (Finans section + notification bell), Enhanced filters on /listings, Ödemeler, Faturalar, Abonelik (4 plans), Bildirimler, Raporlar (5 tabs), Admin panel (Gelir & Bölgeler tabs), Profile KVKK tab, Region dropdowns (6 regions). Login: admin@test.com / Admin123"
+  - agent: "testing"
+    message: "COMPREHENSIVE V4 FRONTEND TESTING COMPLETED! ✅ 10/11 feature groups working perfectly. ❌ 1 CRITICAL ISSUE FOUND: Raporlar page failing due to backend /api/stats endpoint error (TypeError: can't compare offset-naive and offset-aware datetimes at server.py line 1435). All other features fully functional: Login ✅, Sidebar navigation with Finans section (Ödemeler, Faturalar, Abonelik) ✅, Notification bell with badge ✅, Enhanced filters (9 filter fields) ✅, Ödemeler page with payment history ✅, Faturalar page with invoice list ✅, Abonelik page with 4 plans (Ücretsiz, Temel, Premium, Kurumsal) ✅, Bildirimler page with mark all read ✅, Admin panel Gelir & Bölgeler tabs (showing all 6 regions with pricing) ✅, Profile KVKK tab (export & delete request buttons) ✅, Region dropdowns (6 regions) ✅."
