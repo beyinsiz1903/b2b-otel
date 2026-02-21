@@ -612,7 +612,79 @@ async def next_reference_code(region: str) -> str:
 # --- FastAPI app & router ---------------------------------------------------
 
 app = FastAPI(title="Hotel-to-Hotel Capacity Exchange Platform")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 api = APIRouter(prefix="/api")
+
+
+# --- Notification Helper ---------------------------------------------------
+
+async def create_notification(hotel_id: str, ntype: str, title: str, message: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    doc = {
+        "_id": str(uuid.uuid4()),
+        "hotel_id": hotel_id,
+        "type": ntype,
+        "title": title,
+        "message": message,
+        "is_read": False,
+        "metadata": metadata or {},
+        "created_at": now_utc(),
+    }
+    await db.notifications.insert_one(doc)
+    return doc["_id"]
+
+
+async def get_region_match_fee(region: str) -> float:
+    """Bölge bazlı eşleşme ücretini döndürür."""
+    # Önce admin tarafından ayarlanmış bölge fiyatını kontrol et
+    custom = await db.region_pricing.find_one({"_id": region})
+    if custom and "match_fee" in custom:
+        return float(custom["match_fee"])
+    region_info = REGIONS.get(region)
+    if region_info:
+        return region_info["match_fee"]
+    return MATCH_FEE_TL
+
+
+async def auto_create_invoice(hotel_id: str, payment_id: str, match_id: str, amount: float) -> str:
+    """Ödeme tamamlandığında otomatik fatura oluşturur."""
+    hotel = await db.hotels.find_one({"_id": hotel_id})
+    hotel_name = hotel.get("name", "Bilinmeyen Otel") if hotel else "Bilinmeyen Otel"
+    hotel_addr = hotel.get("address", "") if hotel else ""
+
+    # Invoice numarası oluştur
+    year = datetime.now(timezone.utc).year
+    seq_key = f"INV-{year}"
+    seq_res = await db.counters.find_one_and_update(
+        {"_id": seq_key}, {"$inc": {"seq": 1}}, upsert=True, return_document=True
+    )
+    seq = seq_res.get("seq", 1)
+    invoice_number = f"INV-{year}-{seq:06d}"
+
+    tax_rate = 0.20
+    subtotal = amount
+    tax_amount = round(subtotal * tax_rate, 2)
+    total = round(subtotal + tax_amount, 2)
+
+    doc = {
+        "_id": str(uuid.uuid4()),
+        "hotel_id": hotel_id,
+        "payment_id": payment_id,
+        "match_id": match_id,
+        "invoice_number": invoice_number,
+        "hotel_name": hotel_name,
+        "hotel_address": hotel_addr,
+        "items": [{"description": "Kapasite Eşleşme Ücreti", "quantity": 1, "unit_price": amount, "total": amount}],
+        "subtotal": subtotal,
+        "tax_rate": tax_rate,
+        "tax_amount": tax_amount,
+        "total": total,
+        "currency": "TRY",
+        "status": "issued",
+        "created_at": now_utc(),
+    }
+    await db.invoices.insert_one(doc)
+    return doc["_id"]
 
 
 # --- Auth endpoints ---------------------------------------------------------
