@@ -3524,6 +3524,12 @@ const AdminPage = () => {
         <div className={`admin-tab ${tab === "matches" ? "active" : ""}`} onClick={() => setTab("matches")}>
           🤝 Eşleşmeler
         </div>
+        <div className={`admin-tab ${tab === "revenue" ? "active" : ""}`} onClick={() => setTab("revenue")}>
+          💰 Gelir
+        </div>
+        <div className={`admin-tab ${tab === "regions" ? "active" : ""}`} onClick={() => setTab("regions")}>
+          🌍 Bölgeler
+        </div>
       </div>
 
       {loading ? (
