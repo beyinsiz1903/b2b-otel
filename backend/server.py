@@ -342,6 +342,132 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+# --- Inventory Schemas ------------------------------------------------------
+
+class InventoryItemCreate(BaseModel):
+    room_type: str                               # bungalov, suite, standart, villa, apart, dag_evi
+    room_type_name: str                          # Göl Manzaralı Bungalov
+    total_rooms: int = Field(ge=1)
+    description: Optional[str] = None
+    features: Optional[List[str]] = None
+    capacity_label: Optional[str] = None         # 2+1, 3+1, etc
+    pax: Optional[int] = None
+    image_urls: Optional[List[str]] = None
+
+
+class InventoryItemUpdate(BaseModel):
+    room_type_name: Optional[str] = None
+    total_rooms: Optional[int] = None
+    description: Optional[str] = None
+    features: Optional[List[str]] = None
+    capacity_label: Optional[str] = None
+    pax: Optional[int] = None
+    image_urls: Optional[List[str]] = None
+
+
+class InventoryItemPublic(BaseModel):
+    id: str
+    hotel_id: str
+    room_type: str
+    room_type_name: str
+    total_rooms: int
+    description: Optional[str] = None
+    features: Optional[List[str]] = None
+    capacity_label: Optional[str] = None
+    pax: Optional[int] = None
+    image_urls: Optional[List[str]] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AvailabilityBulkSet(BaseModel):
+    """Toplu tarih aralığı müsaitlik ayarı"""
+    inventory_id: str
+    date_start: str                              # YYYY-MM-DD
+    date_end: str                                # YYYY-MM-DD
+    available_rooms: int = Field(ge=0)
+    price_per_night: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class DailyAvailabilityPublic(BaseModel):
+    id: str
+    hotel_id: str
+    inventory_id: str
+    date: str                                    # YYYY-MM-DD
+    available_rooms: int
+    booked_rooms: int
+    total_rooms: int
+    price_per_night: Optional[float] = None
+    notes: Optional[str] = None
+
+
+# --- Pricing Engine Schemas -------------------------------------------------
+
+class PricingRuleCreate(BaseModel):
+    name: str
+    rule_type: str = Field(pattern="^(seasonal|weekend|occupancy|early_bird|last_minute|holiday)$")
+    room_type: Optional[str] = None              # None = tüm oda tipleri
+    multiplier: float = Field(ge=0.1, le=5.0)    # Fiyat çarpanı (1.0 = değişiklik yok)
+    # Seasonal params
+    date_start: Optional[str] = None             # YYYY-MM-DD
+    date_end: Optional[str] = None               # YYYY-MM-DD
+    # Occupancy params
+    occupancy_threshold_min: Optional[float] = None  # 0.0-1.0
+    occupancy_threshold_max: Optional[float] = None  # 0.0-1.0
+    # Early bird / last minute params
+    days_before_min: Optional[int] = None
+    days_before_max: Optional[int] = None
+    # Weekend days (0=Mon ... 6=Sun)
+    weekend_days: Optional[List[int]] = None
+    is_active: bool = True
+    priority: int = 0                            # Yüksek = öncelikli
+
+
+class PricingRuleUpdate(BaseModel):
+    name: Optional[str] = None
+    rule_type: Optional[str] = None
+    room_type: Optional[str] = None
+    multiplier: Optional[float] = None
+    date_start: Optional[str] = None
+    date_end: Optional[str] = None
+    occupancy_threshold_min: Optional[float] = None
+    occupancy_threshold_max: Optional[float] = None
+    days_before_min: Optional[int] = None
+    days_before_max: Optional[int] = None
+    weekend_days: Optional[List[int]] = None
+    is_active: Optional[bool] = None
+    priority: Optional[int] = None
+
+
+class PricingRulePublic(BaseModel):
+    id: str
+    hotel_id: str
+    name: str
+    rule_type: str
+    room_type: Optional[str] = None
+    multiplier: float
+    date_start: Optional[str] = None
+    date_end: Optional[str] = None
+    occupancy_threshold_min: Optional[float] = None
+    occupancy_threshold_max: Optional[float] = None
+    days_before_min: Optional[int] = None
+    days_before_max: Optional[int] = None
+    weekend_days: Optional[List[int]] = None
+    is_active: bool
+    priority: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class PriceCalculateRequest(BaseModel):
+    room_type: str
+    date_start: str                              # YYYY-MM-DD
+    date_end: str                                # YYYY-MM-DD
+    base_price: float
+    pax: Optional[int] = None
+
+
 # --- Google Sheets Schemas --------------------------------------------------
 
 class SheetsConfigSave(BaseModel):
