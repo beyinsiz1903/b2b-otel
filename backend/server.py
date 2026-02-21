@@ -531,7 +531,11 @@ async def log_activity(actor_hotel_id: str, action: str, entity: str, entity_id:
 
 
 async def next_reference_code(region: str) -> str:
-    region_prefix = "SPC" if region.lower().startswith("sapanca") else "KTP"
+    region_info = REGIONS.get(region)
+    if region_info:
+        region_prefix = region_info["prefix"]
+    else:
+        region_prefix = "SPC" if region.lower().startswith("sapanca") else "KTP"
     year = datetime.now(timezone.utc).year
     key = f"{region_prefix}-{year}"
     res = await db.counters.find_one_and_update(
