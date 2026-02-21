@@ -231,11 +231,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Envanter yönetimi: oda tipi ekleme, listeleme, güncelleme, silme. Manuel test geçti."
+      - working: true
+        agent: "testing"
+        comment: "Comprehensive testing completed: CREATE (POST /inventory), READ (GET /inventory, GET /inventory/{id}), UPDATE (PUT /inventory/{id}), DELETE (DELETE /inventory/{id}) - all endpoints working correctly. Test data: Created 'Göl Manzaralı Test Bungalov' with 10 rooms, updated to 12 rooms, successfully retrieved and deleted."
 
   - task: "Inventory Bulk Availability - POST /inventory/availability/bulk"
     implemented: true
@@ -243,11 +246,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Toplu tarih aralığı müsaitlik ayarlama. Overbooking engelleme dahil. Manuel test geçti."
+      - working: true
+        agent: "testing"
+        comment: "Bulk availability setting tested successfully. Set 8 available rooms for 11-day period (30+ days in future), price 1500 TL per night. System correctly prevents overbooking by validating available_rooms <= total_rooms and respects existing bookings."
 
   - task: "Inventory Calendar - GET /inventory/{id}/calendar"
     implemented: true
@@ -255,11 +261,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Takvim görünümü. Aylık müsaitlik verisi döner. Manuel test geçti."
+      - working: true
+        agent: "testing"
+        comment: "Calendar view tested successfully. Returns monthly availability data with proper structure including: inventory_id, room_type_name, total_rooms, month, and daily breakdown with availability/booking data for each day."
 
   - task: "Inventory Summary - GET /inventory/summary/all"
     implemented: true
@@ -267,11 +276,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "medium"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Envanter özeti: bugünkü müsaitlik, doluluk oranı, fiyat bilgisi."
+      - working: true
+        agent: "testing"
+        comment: "Inventory summary endpoint working correctly. Returns comprehensive overview including: today's availability, occupancy rates, pricing info, and monthly booking statistics for all inventory items."
 
   - task: "Inventory Check Availability - POST /inventory/check-availability"
     implemented: true
@@ -279,11 +291,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Overbooking engelleme: belirli tarih aralığında oda müsaitliği kontrol."
+      - working: true
+        agent: "testing"
+        comment: "Availability check endpoint working correctly. POST with query parameters (room_type, date_start, date_end). Successfully validates availability and prevents overbooking. Returns proper response with available status, min_available count, total_rooms, and problem dates if any."
 
   - task: "Auto inventory decrement on match accept"
     implemented: true
@@ -291,11 +306,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Eşleşme kabul edildiğinde ilgili günlerde booked_rooms otomatik artırılır."
+      - working: true
+        agent: "testing"
+        comment: "Auto inventory decrement functionality reviewed in code. Function _decrement_inventory_on_match correctly updates booked_rooms and decrements available_rooms for each day in the date range when a match is accepted. Integration point confirmed in match acceptance workflow."
 
   - task: "Pricing Rules CRUD - POST/GET/PUT/DELETE /pricing/rules"
     implemented: true
@@ -303,11 +321,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "6 kural tipi: seasonal, weekend, occupancy, early_bird, last_minute, holiday."
+      - working: true
+        agent: "testing"
+        comment: "Pricing rules CRUD fully tested. Successfully created 3 different rule types: seasonal (1.5x multiplier for summer), weekend (1.2x for Fri-Sun), early_bird (0.9x for 30-90 days advance). LIST, UPDATE, and DELETE operations all working correctly. All 6 rule types supported: seasonal, weekend, occupancy, early_bird, last_minute, holiday."
 
   - task: "Dynamic Price Calculator - POST /pricing/calculate"
     implemented: true
@@ -315,11 +336,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Tarih aralığı için dinamik fiyat hesaplama. Günlük dağılım ve uygulanan kurallar döner."
+      - working: true
+        agent: "testing"
+        comment: "Dynamic price calculation working perfectly. Tested with base price 1000 TL over 8-day period 45 days in advance. Final calculated price: 8388 TL (shows rules are being applied correctly). Returns detailed daily breakdown with applied rules and multipliers."
 
   - task: "Market Comparison - GET /pricing/market-comparison"
     implemented: true
@@ -327,11 +351,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "medium"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Piyasa karşılaştırması: ortalama, min, max, medyan fiyat ve öneri."
+      - working: true
+        agent: "testing"
+        comment: "Market comparison endpoint working correctly. Analyzes active listings, compares hotel's pricing against market averages, provides pricing recommendations. Returns comprehensive market data including sample size, price ranges, and actionable recommendations."
 
   - task: "Price History - GET /pricing/history"
     implemented: true
@@ -339,11 +366,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "medium"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Son 6 aylık fiyat geçmişi."
+      - working: true
+        agent: "testing"
+        comment: "Price history endpoint working correctly. Returns historical pricing data for specified time period (tested with 3 months for bungalov room type). Provides monthly aggregated data with average prices, listing counts, and price ranges."
 
   - task: "Performance Health - GET /performance/health"
     implemented: true
@@ -351,11 +381,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "medium"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "DB bağlantı, koleksiyon sayıları, yanıt süresi. Auth gerektirmez."
+      - working: true
+        agent: "testing"
+        comment: "Performance health check working perfectly. No authentication required. Returns 'healthy' status with 1.87ms response time. Includes MongoDB connection test, collection document counts for 8 collections, and detailed latency metrics. All systems operational."
 
   - task: "Performance Benchmark - GET /performance/benchmark"
     implemented: true
@@ -363,11 +396,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "medium"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "6 test: db_single_read, db_list_50, db_aggregation, complex_query, db_write_delete, inventory_query. Grade A-D."
+      - working: true
+        agent: "testing"
+        comment: "Performance benchmark working excellently. Grade A performance with 2.25ms total execution time. All 6 benchmark tests executed: db_single_read, db_list_50, db_aggregation, complex_query, db_write_delete, inventory_query. System performing at optimal levels."
 
   - task: "DB Indexes - GET /performance/db-indexes + ensure_indexes on startup"
     implemented: true
@@ -375,11 +411,14 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "medium"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "30+ index oluşturuldu. Uygulama başlangıcında otomatik. Admin endpoint ile listeleme."
+      - working: true
+        agent: "testing"
+        comment: "DB indexes endpoint working correctly (admin access required). Returns comprehensive index information for 7 collections with proper index structures. Startup index creation confirmed to be working - all performance-critical indexes are in place."
 
 frontend:
   - task: "Filtreleme paneli - Kapasiteler sayfası"
