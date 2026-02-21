@@ -1228,6 +1228,7 @@ async def accept_alternative(request_id: str, current_hotel: Dict[str, Any] = De
     await db.availability_listings.update_one({"_id": listing["_id"]}, {"$set": {"is_locked": False, "lock_request_id": None, "updated_at": now}})
 
     ref_code = await next_reference_code(listing["region"])
+    fee_amount = await get_region_match_fee(listing["region"])
     match_id = str(uuid.uuid4())
     match_doc = {
         "_id": match_id,
@@ -1236,8 +1237,9 @@ async def accept_alternative(request_id: str, current_hotel: Dict[str, Any] = De
         "hotel_a_id": req["from_hotel_id"],
         "hotel_b_id": req["to_hotel_id"],
         "reference_code": ref_code,
-        "fee_amount": MATCH_FEE_TL,
+        "fee_amount": fee_amount,
         "fee_status": "due",
+        "region": listing.get("region", "Sapanca"),
         "accepted_at": now,
         "created_at": now,
     }
@@ -1247,6 +1249,9 @@ async def accept_alternative(request_id: str, current_hotel: Dict[str, Any] = De
     # Envanter otomatik güncelle
     await _decrement_inventory_on_match(listing)
 
+    # Bildirimler
+    await create_notification(req["to_hotel_id"], "match_created", "Alternatif Kabul Edildi", f"Alternatif teklifiniz kabul edildi. Referans: {ref_code}", {"match_id": match_id})
+
     return MatchPublic(
         id=match_id,
         request_id=req["_id"],
@@ -1254,7 +1259,7 @@ async def accept_alternative(request_id: str, current_hotel: Dict[str, Any] = De
         hotel_a_id=req["from_hotel_id"],
         hotel_b_id=req["to_hotel_id"],
         reference_code=ref_code,
-        fee_amount=MATCH_FEE_TL,
+        fee_amount=fee_amount,
         fee_status="due",
         accepted_at=now,
         created_at=now,
