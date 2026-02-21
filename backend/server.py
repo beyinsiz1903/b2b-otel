@@ -937,10 +937,15 @@ async def list_listings(
     mine: bool = False,
     hide_expired: bool = True,
     pax_min: Optional[int] = None,
+    pax_max: Optional[int] = None,
+    price_min: Optional[float] = None,
     price_max: Optional[float] = None,
     avail_status: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    features: Optional[str] = None,
+    room_type: Optional[str] = None,
+    breakfast_included: Optional[bool] = None,
     current_hotel: Dict[str, Any] = Depends(get_current_hotel),
 ):
     query: Dict[str, Any] = {}
@@ -953,23 +958,35 @@ async def list_listings(
     if hide_expired and not mine:
         query["date_end"] = {"$gte": now_utc()}
     if pax_min is not None:
-        query["pax"] = {"$gte": pax_min}
+        query.setdefault("pax", {})["$gte"] = pax_min
+    if pax_max is not None:
+        query.setdefault("pax", {})["$lte"] = pax_max
+    if price_min is not None:
+        query.setdefault("price_max", {})["$gte"] = price_min
     if price_max is not None:
-        query["price_min"] = {"$lte": price_max}
+        query.setdefault("price_min", {})["$lte"] = price_max
     if avail_status:
         query["availability_status"] = avail_status
     if date_from:
         try:
             df = datetime.fromisoformat(date_from)
-            query.setdefault("date_start", {})["$gte"] = df
+            query.setdefault("date_end", {})["$gte"] = df
         except Exception:
             pass
     if date_to:
         try:
             dt = datetime.fromisoformat(date_to)
-            query.setdefault("date_end", {})["$lte"] = dt
+            query.setdefault("date_start", {})["$lte"] = dt
         except Exception:
             pass
+    if features:
+        feature_list = [f.strip() for f in features.split(",") if f.strip()]
+        if feature_list:
+            query["features"] = {"$all": feature_list}
+    if room_type:
+        query["room_type"] = room_type
+    if breakfast_included is not None:
+        query["breakfast_included"] = breakfast_included
 
     cursor = db.availability_listings.find(query).sort("created_at", -1)
     docs = await cursor.to_list(length=500)
