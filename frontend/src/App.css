@@ -1643,3 +1643,124 @@ a { text-decoration: none; color: inherit; }
   margin-left: 4px;
   vertical-align: middle;
 }
+
+/* ===== CHIPS ===== */
+.chip {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.chip-green {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.chip-gray {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+/* ===== TAB BAR ===== */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.tab-btn {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  background: none;
+  font-size: 0.85rem;
+  color: #64748b;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  color: #2e6b57;
+}
+
+.tab-btn.active {
+  color: #2e6b57;
+  font-weight: 600;
+  border-bottom-color: #2e6b57;
+}
+
+/* ===== ALERT STYLES ===== */
+.alert {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 0.85rem;
+}
+
+/* ===== TABLE RESPONSIVE ===== */
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.table-wrap th,
+.table-wrap td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.table-wrap th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+.table-wrap tr:hover {
+  background: #f8fafc;
+}
+
+/* ===== BUTTON VARIANTS ===== */
+.btn-danger {
+  background: #ef4444;
+  color: #fff;
+  border: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: inherit;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+.btn-danger.btn-sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+/* ===== PAGE LOADING ===== */
+.page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: #94a3b8;
+  font-size: 1rem;
+}
+
