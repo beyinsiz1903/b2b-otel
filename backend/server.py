@@ -1060,6 +1060,9 @@ async def create_request(payload: RequestCreate, current_hotel: Dict[str, Any] =
     await db.availability_listings.update_one({"_id": listing["_id"]}, {"$set": {"is_locked": True, "lock_request_id": req_id, "updated_at": now}})
     await log_activity(current_hotel["_id"], "create", "request", req_id, {"listing_id": payload.listing_id})
 
+    # Bildirim oluştur
+    await create_notification(listing["hotel_id"], "request_received", "Yeni Talep Alındı", f"{current_hotel['name']} otelinden yeni bir kapasite talebi aldınız.", {"request_id": req_id})
+
     return RequestPublic(
         id=req_id,
         listing_id=payload.listing_id,
