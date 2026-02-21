@@ -102,7 +102,7 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "B2B otel kapasite paylaşım platformu (CapX Sapanca-Kartepe). Otellerin kendi aralarında oda paylaşımı yapabildiği kapalı devre platform. Büyük güncelleme: Filtreleme, Alternatif teklif UI, İlan düzenleme/silme, Profil sayfası, Raporlama, Admin panel, Şifre değiştirme, Geçmiş ilan gizleme, WhatsApp linki, Yeni eklenen endpoint'ler."
+user_problem_statement: "B2B otel kapasite paylaşım platformu (CapX Sapanca-Kartepe). Otellerin kendi aralarında oda paylaşımı yapabildiği kapalı devre platform. Büyük güncelleme: Filtreleme, Alternatif teklif UI, İlan düzenleme/silme, Profil sayfası, Raporlama, Admin panel, Şifre değiştirme, Geçmiş ilan gizleme, WhatsApp linki, Yeni eklenen endpoint'ler. YENİ: Gerçek otel envanteri entegrasyonu, Gelişmiş fiyatlama motoru, Performans testleri."
 
 backend:
   - task: "GET /listings filtreleme (hide_expired, pax_min, price_max, avail_status)"
@@ -224,6 +224,162 @@ backend:
       - working: true
         agent: "main"
         comment: "Eklendi. İlk kayıt olan otel admin=true"
+
+  - task: "Inventory CRUD - POST/GET/PUT/DELETE /inventory"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Envanter yönetimi: oda tipi ekleme, listeleme, güncelleme, silme. Manuel test geçti."
+
+  - task: "Inventory Bulk Availability - POST /inventory/availability/bulk"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Toplu tarih aralığı müsaitlik ayarlama. Overbooking engelleme dahil. Manuel test geçti."
+
+  - task: "Inventory Calendar - GET /inventory/{id}/calendar"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Takvim görünümü. Aylık müsaitlik verisi döner. Manuel test geçti."
+
+  - task: "Inventory Summary - GET /inventory/summary/all"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Envanter özeti: bugünkü müsaitlik, doluluk oranı, fiyat bilgisi."
+
+  - task: "Inventory Check Availability - POST /inventory/check-availability"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Overbooking engelleme: belirli tarih aralığında oda müsaitliği kontrol."
+
+  - task: "Auto inventory decrement on match accept"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Eşleşme kabul edildiğinde ilgili günlerde booked_rooms otomatik artırılır."
+
+  - task: "Pricing Rules CRUD - POST/GET/PUT/DELETE /pricing/rules"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "6 kural tipi: seasonal, weekend, occupancy, early_bird, last_minute, holiday."
+
+  - task: "Dynamic Price Calculator - POST /pricing/calculate"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Tarih aralığı için dinamik fiyat hesaplama. Günlük dağılım ve uygulanan kurallar döner."
+
+  - task: "Market Comparison - GET /pricing/market-comparison"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Piyasa karşılaştırması: ortalama, min, max, medyan fiyat ve öneri."
+
+  - task: "Price History - GET /pricing/history"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Son 6 aylık fiyat geçmişi."
+
+  - task: "Performance Health - GET /performance/health"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "DB bağlantı, koleksiyon sayıları, yanıt süresi. Auth gerektirmez."
+
+  - task: "Performance Benchmark - GET /performance/benchmark"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "6 test: db_single_read, db_list_50, db_aggregation, complex_query, db_write_delete, inventory_query. Grade A-D."
+
+  - task: "DB Indexes - GET /performance/db-indexes + ensure_indexes on startup"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "30+ index oluşturuldu. Uygulama başlangıcında otomatik. Admin endpoint ile listeleme."
 
 frontend:
   - task: "Filtreleme paneli - Kapasiteler sayfası"
