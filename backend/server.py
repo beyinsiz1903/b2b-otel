@@ -1408,7 +1408,7 @@ async def admin_update_fee_status(match_id: str, body: Dict[str, str], admin: Di
 def _get_frontend_url() -> str:
     backend_url = os.environ.get("REACT_APP_BACKEND_URL", "")
     # Backend URL'den frontend URL'yi çıkar (aynı domain, farklı port)
-    # Ör: https://performance-check-4.preview.emergentagent.com
+    # Ör: https://commerce-maturity.preview.emergentagent.com
     return backend_url.replace(":8001", "").replace("/api", "").rstrip("/")
 
 def _get_redirect_uri() -> str:
