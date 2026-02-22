@@ -894,9 +894,10 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Raporlar Page (/reports) - Fix GET /api/stats endpoint datetime comparison error"
-  stuck_tasks:
-    - "Raporlar Page (/reports) - 5 Tabs"
+    - "Cross-region matching backend endpoint"
+    - "Enhanced Reports Page (6 tabs)"
+    - "Cross-region listing create/update"
+  stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
@@ -909,3 +910,5 @@ agent_communication:
     message: "Testing request: Test new v4 frontend features - Login, Navigation (Finans section + notification bell), Enhanced filters on /listings, Ödemeler, Faturalar, Abonelik (4 plans), Bildirimler, Raporlar (5 tabs), Admin panel (Gelir & Bölgeler tabs), Profile KVKK tab, Region dropdowns (6 regions). Login: admin@test.com / Admin123"
   - agent: "testing"
     message: "COMPREHENSIVE V4 FRONTEND TESTING COMPLETED! ✅ 10/11 feature groups working perfectly. ❌ 1 CRITICAL ISSUE FOUND: Raporlar page failing due to backend /api/stats endpoint error (TypeError: can't compare offset-naive and offset-aware datetimes at server.py line 1435). All other features fully functional: Login ✅, Sidebar navigation with Finans section (Ödemeler, Faturalar, Abonelik) ✅, Notification bell with badge ✅, Enhanced filters (9 filter fields) ✅, Ödemeler page with payment history ✅, Faturalar page with invoice list ✅, Abonelik page with 4 plans (Ücretsiz, Temel, Premium, Kurumsal) ✅, Bildirimler page with mark all read ✅, Admin panel Gelir & Bölgeler tabs (showing all 6 regions with pricing) ✅, Profile KVKK tab (export & delete request buttons) ✅, Region dropdowns (6 regions) ✅."
+  - agent: "main"
+    message: "V5 update: Fixed Reports page datetime bug, enhanced Reports page (6 tabs now: Genel Bakış, Talep İstatistikleri with period selector 7/30/90/180/365 days, Pazar Trendleri with supply/demand balance bars for 6 regions, Performans with circular grade + progress bars, Gelir, Bölgeler Arası). Added cross-region matching: allow_cross_region field on listings, include_cross_region filter parameter, GET /api/stats/cross-region endpoint. Cross-region badges in listing cards. Test: admin@test.com / Admin123. Test backend: POST /listings with allow_cross_region, GET /listings?include_cross_region=true, GET /stats/cross-region, GET /stats/requests?period_days=7, GET /stats/requests?period_days=90."
