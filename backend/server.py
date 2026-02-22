@@ -903,6 +903,7 @@ def listing_to_public(doc: Dict[str, Any]) -> AvailabilityListingPublic:
         breakfast_included=doc.get("breakfast_included", False),
         min_nights=doc.get("min_nights", 1),
         guest_restrictions=doc.get("guest_restrictions"),
+        allow_cross_region=doc.get("allow_cross_region", False),
     )
 
 
