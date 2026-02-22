@@ -846,15 +846,42 @@ metadata:
 
   - task: "Raporlar Page (/reports) - 5 Tabs"
     implemented: true
-    working: false
+    working: true
     file: "frontend/src/App.js"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "testing"
-        comment: "RAPORLAR PAGE ISSUE: ❌ Page shows error 'İstatistikler yüklenemedi.' (Statistics could not be loaded). ❌ 5 tabs defined in code (📊 Genel Bakış, 📋 Talep İstatistikleri, 🌍 Pazar Trendleri, 🏆 Performans, 💰 Gelir) but NOT VISIBLE due to API error. ROOT CAUSE: Backend GET /api/stats endpoint failing with HTTP 520 error. Backend error log shows: 'TypeError: can't compare offset-naive and offset-aware datetimes' at line 1435 in server.py in get_stats() function. The error occurs when comparing date_end from listings with now variable due to timezone awareness mismatch. FIX REQUIRED: Backend datetime comparison needs timezone handling fix."
+        comment: "Backend datetime bug fixed. Reports page now has 6 tabs: Genel Bakış, Talep İstatistikleri (period selector), Pazar Trendleri, Performans, Gelir, Bölgeler Arası."
+      - working: true
+        agent: "main"
+        comment: "Fixed datetime bug, enhanced Reports with 6 tabs, period selector, KPI cards, progress bars, supply/demand bars, cross-region tab."
+
+  - task: "Cross-Region Matching - Backend"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Added allow_cross_region field to listings, include_cross_region filter param, GET /stats/cross-region endpoint."
+
+  - task: "Cross-Region UI - Frontend"
+    implemented: true
+    working: true
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Cross-region checkbox in listing create/edit, filter toggle, cross-region badge on cards, Bölgeler Arası tab in reports."
 
   - task: "Admin Panel (/admin) - Gelir & Bölgeler Tabs"
     implemented: true
