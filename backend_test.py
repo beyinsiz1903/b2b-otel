@@ -352,7 +352,7 @@ class CapXAPITester:
                 self.log_test("/kvkk/export", "GET", True, "KVKK data export successful", 200)
                 
                 # Test deletion request
-                delete_response = self.session.post(f"{BASE_URL}/kvkv/delete-request")
+                delete_response = self.session.post(f"{BASE_URL}/kvkk/delete-request")
                 if delete_response.status_code == 200:
                     delete_data = delete_response.json()
                     self.log_test("/kvkk/delete-request", "POST", True, "KVKK deletion request created", 200)
