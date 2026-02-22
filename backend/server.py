@@ -3698,6 +3698,62 @@ async def request_statistics(
     }
 
 
+# =============================================================================
+# --- Cross-Region Stats & Matching -------------------------------------------
+# =============================================================================
+
+@api.get("/stats/cross-region")
+async def cross_region_stats(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Bölgeler arası kapasite paylaşım istatistikleri."""
+    now = now_utc()
+
+    # Cross-region ilanlar
+    cross_listings = await db.availability_listings.find({
+        "allow_cross_region": True,
+        "date_end": {"$gte": now},
+    }).to_list(length=500)
+
+    # Bölge bazlı cross-region dağılım
+    region_cross = defaultdict(lambda: {"listings": 0, "total_pax": 0})
+    for l in cross_listings:
+        r = l.get("region", "Bilinmiyor")
+        region_cross[r]["listings"] += 1
+        region_cross[r]["total_pax"] += l.get("pax", 0)
+
+    # Tüm bölge çiftleri arası eşleşme sayısı
+    cross_matches = []
+    all_matches = await db.matches.find({}).to_list(length=5000)
+    for m in all_matches:
+        listing = await db.availability_listings.find_one({"_id": m.get("listing_id")})
+        if listing:
+            listing_region = listing.get("region", "")
+            hotel_a = await db.hotels.find_one({"_id": m.get("hotel_a_id")})
+            hotel_b = await db.hotels.find_one({"_id": m.get("hotel_b_id")})
+            if hotel_a and hotel_b:
+                region_a = hotel_a.get("region", "")
+                region_b = hotel_b.get("region", "")
+                if region_a != region_b:
+                    cross_matches.append({
+                        "from_region": region_a,
+                        "to_region": region_b,
+                        "listing_region": listing_region,
+                    })
+
+    # Bölge çiftleri
+    pair_counts = defaultdict(int)
+    for cm in cross_matches:
+        pair_key = f"{cm['from_region']} → {cm['to_region']}"
+        pair_counts[pair_key] += 1
+
+    return {
+        "total_cross_region_listings": len(cross_listings),
+        "region_breakdown": dict(region_cross),
+        "total_cross_region_matches": len(cross_matches),
+        "region_pairs": dict(pair_counts),
+        "regions": list(REGIONS.keys()),
+    }
+
+
 # Healthcheck / root
 
 @api.get("/")
