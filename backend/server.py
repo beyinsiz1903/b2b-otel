@@ -224,6 +224,7 @@ class AvailabilityListingUpdate(BaseModel):
     breakfast_included: Optional[bool] = None
     min_nights: Optional[int] = None
     guest_restrictions: Optional[List[str]] = None
+    allow_cross_region: Optional[bool] = None
 
 
 class AvailabilityListingPublic(BaseModel):
