@@ -1234,7 +1234,7 @@ const AvailabilityPage = () => {
     price_min: 0, availability_status: "available",
     breakfast_included: false, min_nights: 1,
     image_urls_raw: "", features_raw: "", restrictions_raw: "", notes: "",
-    template_id: "",
+    template_id: "", allow_cross_region: false,
   };
   const [form, setForm] = React.useState(emptyForm);
   const [mine, setMine] = React.useState([]);
