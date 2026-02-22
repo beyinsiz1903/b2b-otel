@@ -865,11 +865,14 @@ metadata:
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Added allow_cross_region field to listings, include_cross_region filter param, GET /stats/cross-region endpoint."
+      - working: true
+        agent: "testing"
+        comment: "COMPREHENSIVE BACKEND TESTING COMPLETED ✅ All cross-region endpoints working: 1) GET /stats/cross-region returns 6 regions data, 2) POST /listings with allow_cross_region=true creates listings successfully, 3) GET /listings?include_cross_region=true filter parameter works correctly. All 9 endpoints from review request tested: /stats (no datetime errors) ✅, /stats/market-trends (6 regions with supply/demand) ✅, /stats/performance-scores (all required fields) ✅, /stats/requests with period_days=7,90 ✅, /stats/cross-region (NEW endpoint) ✅, /regions (6 regions) ✅. Login credentials admin@test.com/Admin123 working. Cross-region functionality fully operational."
 
   - task: "Cross-Region UI - Frontend"
     implemented: true
