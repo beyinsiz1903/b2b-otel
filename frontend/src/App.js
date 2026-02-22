@@ -1893,6 +1893,7 @@ const EditListingModal = ({ listing, onClose, onSaved }) => {
     image_urls_raw: (listing.image_urls || []).join(", "),
     features_raw: (listing.features || []).join(", "),
     notes: listing.notes || "",
+    allow_cross_region: listing.allow_cross_region || false,
   });
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
