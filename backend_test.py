@@ -309,8 +309,9 @@ class CapXAPITester:
             self.log_test("/stats/performance-scores", "GET", False, f"Error: {str(e)}")
     
     def test_request_statistics(self):
-        """Test GET /api/stats/requests"""
+        """Test GET /api/stats/requests with period parameters"""
         try:
+            # Test default request statistics
             response = self.session.get(f"{BASE_URL}/stats/requests")
             
             if response.status_code == 200:
@@ -318,6 +319,24 @@ class CapXAPITester:
                 self.log_test("/stats/requests", "GET", True, "Request statistics retrieved successfully", 200)
             else:
                 self.log_test("/stats/requests", "GET", False, f"Request statistics failed: {response.text}", response.status_code)
+                
+            # Test with period_days=7
+            response_7 = self.session.get(f"{BASE_URL}/stats/requests", params={"period_days": 7})
+            
+            if response_7.status_code == 200:
+                stats_data_7 = response_7.json()
+                self.log_test("/stats/requests?period_days=7", "GET", True, "Request statistics (7 days) retrieved successfully", 200)
+            else:
+                self.log_test("/stats/requests?period_days=7", "GET", False, f"Request statistics (7 days) failed: {response_7.text}", response_7.status_code)
+                
+            # Test with period_days=90  
+            response_90 = self.session.get(f"{BASE_URL}/stats/requests", params={"period_days": 90})
+            
+            if response_90.status_code == 200:
+                stats_data_90 = response_90.json()
+                self.log_test("/stats/requests?period_days=90", "GET", True, "Request statistics (90 days) retrieved successfully", 200)
+            else:
+                self.log_test("/stats/requests?period_days=90", "GET", False, f"Request statistics (90 days) failed: {response_90.text}", response_90.status_code)
                 
         except Exception as e:
             self.log_test("/stats/requests", "GET", False, f"Error: {str(e)}")
