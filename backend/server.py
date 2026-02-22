@@ -953,11 +953,19 @@ async def list_listings(
     features: Optional[str] = None,
     room_type: Optional[str] = None,
     breakfast_included: Optional[bool] = None,
+    include_cross_region: Optional[bool] = False,
     current_hotel: Dict[str, Any] = Depends(get_current_hotel),
 ):
     query: Dict[str, Any] = {}
     if region:
-        query["region"] = region
+        if include_cross_region:
+            # Bölge filtresi + cross-region ilanları dahil et
+            query["$or"] = [
+                {"region": region},
+                {"allow_cross_region": True},
+            ]
+        else:
+            query["region"] = region
     if concept:
         query["concept"] = {"$regex": concept, "$options": "i"}
     if mine:
