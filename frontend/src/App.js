@@ -825,6 +825,7 @@ const ListingsPage = () => {
       if (f.room_type) params.room_type = f.room_type;
       if (f.features) params.features = f.features;
       params.hide_expired = f.hide_expired;
+      if (f.include_cross_region) params.include_cross_region = true;
       const res = await axios.get("/listings", { params });
       setListings(res.data);
     } catch {
