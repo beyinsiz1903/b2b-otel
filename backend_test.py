@@ -485,6 +485,7 @@ class CapXAPITester:
         
         # Core v4 endpoints
         self.test_regions()
+        self.test_general_stats()  # NEW: Test GET /api/stats for datetime errors
         self.test_enhanced_filters()
         self.test_payment_system()
         self.test_invoice_system()
@@ -494,6 +495,7 @@ class CapXAPITester:
         self.test_market_trends()
         self.test_performance_scores()
         self.test_request_statistics()
+        self.test_cross_region_functionality()  # NEW: Test cross-region functionality
         self.test_kvkk_compliance()
         self.test_admin_endpoints()
         
