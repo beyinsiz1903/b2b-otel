@@ -1313,6 +1313,7 @@ const AvailabilityPage = () => {
         min_nights: Number(form.min_nights),
         image_urls, features, guest_restrictions, notes: form.notes,
         template_id: form.template_id || null,
+        allow_cross_region: form.allow_cross_region,
       });
       setSuccess("✅ Kapasite ilanı yayınlandı!");
       setForm({ ...emptyForm });
