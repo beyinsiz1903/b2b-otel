@@ -924,9 +924,8 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Cross-region matching backend endpoint"
     - "Enhanced Reports Page (6 tabs)"
-    - "Cross-region listing create/update"
+    - "Cross-region UI testing"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
