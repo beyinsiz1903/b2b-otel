@@ -397,13 +397,18 @@ class CapXAPITester:
             # Test creating a listing with allow_cross_region=true
             listing_data = {
                 "region": "Sapanca",
-                "hotel_name": "Test Cross-Region Hotel",
-                "room_type": "suite",
-                "pax_capacity": 4,
+                "micro_location": "Göl kenarı",
+                "concept": "Butik otel",
+                "capacity_label": "4 kişi",
+                "pax": 4,
                 "date_start": "2025-03-01",
                 "date_end": "2025-03-07", 
-                "price_per_night": 1500,
+                "nights": 6,
+                "price_min": 1400,
+                "price_max": 1600,
+                "availability_status": "available",
                 "allow_cross_region": True,
+                "room_type": "suite",
                 "description": "Test listing for cross-region matching"
             }
             
