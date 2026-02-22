@@ -1923,6 +1923,7 @@ const EditListingModal = ({ listing, onClose, onSaved }) => {
         price_min: Number(form.price_min), price_max: Number(form.price_min),
         availability_status: form.availability_status,
         image_urls, features, notes: form.notes,
+        allow_cross_region: form.allow_cross_region,
       });
       onSaved();
     } catch (err) {
