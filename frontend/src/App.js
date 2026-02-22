@@ -1023,6 +1023,7 @@ const ListingsPage = () => {
                   )}
                 </div>
                 {l.is_locked && <div className="locked-badge">🔒 Şu an kilitli</div>}
+                {l.allow_cross_region && <div style={{ position: "absolute", top: 8, right: 8, background: "#1d4ed8", color: "white", fontSize: "0.7rem", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>🌍 Cross-Region</div>}
               </div>
             </div>
           ))}
