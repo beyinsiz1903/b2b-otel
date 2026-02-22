@@ -844,7 +844,7 @@ const ListingsPage = () => {
   };
 
   const resetFilters = () => {
-    const fresh = { region: "", concept: "", pax_min: "", pax_max: "", price_min: "", price_max: "", avail_status: "", hide_expired: true, date_from: "", date_to: "", room_type: "", features: "" };
+    const fresh = { region: "", concept: "", pax_min: "", pax_max: "", price_min: "", price_max: "", avail_status: "", hide_expired: true, date_from: "", date_to: "", room_type: "", features: "", include_cross_region: false };
     setFilters(fresh);
     load(fresh);
   };
