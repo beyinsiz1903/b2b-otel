@@ -202,6 +202,7 @@ class AvailabilityListingCreate(BaseModel):
     min_nights: Optional[int] = 1
     guest_restrictions: Optional[List[str]] = None
     template_id: Optional[str] = None
+    allow_cross_region: Optional[bool] = False
 
 
 class AvailabilityListingUpdate(BaseModel):
