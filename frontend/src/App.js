@@ -805,6 +805,7 @@ const ListingsPage = () => {
     date_to: "",
     room_type: "",
     features: "",
+    include_cross_region: false,
   });
   const navigate = useNavigate();
 
