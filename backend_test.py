@@ -352,7 +352,7 @@ class CapXAPITester:
                 self.log_test("/kvkk/export", "GET", True, "KVKK data export successful", 200)
                 
                 # Test deletion request
-                delete_response = self.session.post(f"{BASE_URL}/kvkk/delete-request")
+                delete_response = self.session.post(f"{BASE_URL}/kvkv/delete-request")
                 if delete_response.status_code == 200:
                     delete_data = delete_response.json()
                     self.log_test("/kvkk/delete-request", "POST", True, "KVKK deletion request created", 200)
@@ -363,6 +363,72 @@ class CapXAPITester:
                 
         except Exception as e:
             self.log_test("/kvkk/*", "MIXED", False, f"KVKK compliance error: {str(e)}")
+    
+    def test_general_stats(self):
+        """Test GET /api/stats - Should return stats without datetime errors"""
+        try:
+            response = self.session.get(f"{BASE_URL}/stats")
+            
+            if response.status_code == 200:
+                stats_data = response.json()
+                self.log_test("/stats", "GET", True, "General stats retrieved successfully (no datetime errors)", 200)
+            else:
+                self.log_test("/stats", "GET", False, f"General stats failed: {response.text}", response.status_code)
+                
+        except Exception as e:
+            self.log_test("/stats", "GET", False, f"Error: {str(e)}")
+    
+    def test_cross_region_functionality(self):
+        """Test cross-region matching functionality"""
+        try:
+            # Test GET /api/stats/cross-region
+            response = self.session.get(f"{BASE_URL}/stats/cross-region")
+            
+            if response.status_code == 200:
+                cross_region_data = response.json()
+                # Check if it returns regions list
+                if "regions" in cross_region_data:
+                    self.log_test("/stats/cross-region", "GET", True, f"Cross-region stats retrieved with {len(cross_region_data.get('regions', []))} regions", 200)
+                else:
+                    self.log_test("/stats/cross-region", "GET", True, "Cross-region stats retrieved successfully", 200)
+            else:
+                self.log_test("/stats/cross-region", "GET", False, f"Cross-region stats failed: {response.text}", response.status_code)
+            
+            # Test creating a listing with allow_cross_region=true
+            listing_data = {
+                "region": "Sapanca",
+                "hotel_name": "Test Cross-Region Hotel",
+                "room_type": "suite",
+                "pax_capacity": 4,
+                "date_start": "2025-03-01",
+                "date_end": "2025-03-07", 
+                "price_per_night": 1500,
+                "allow_cross_region": True,
+                "description": "Test listing for cross-region matching"
+            }
+            
+            create_response = self.session.post(f"{BASE_URL}/listings", json=listing_data)
+            
+            if create_response.status_code == 200:
+                new_listing = create_response.json()
+                listing_id = new_listing.get("id") or new_listing.get("_id")
+                self.log_test("/listings (with allow_cross_region=true)", "POST", True, f"Cross-region listing created: {listing_id}", 200)
+                
+                # Test filtering with include_cross_region=true
+                filter_response = self.session.get(f"{BASE_URL}/listings", params={"include_cross_region": "true"})
+                
+                if filter_response.status_code == 200:
+                    filtered_listings = filter_response.json()
+                    cross_region_listings = [l for l in filtered_listings if l.get("allow_cross_region", False)]
+                    self.log_test("/listings?include_cross_region=true", "GET", True, f"Cross-region filter returned {len(cross_region_listings)} cross-region listings", 200)
+                else:
+                    self.log_test("/listings?include_cross_region=true", "GET", False, f"Cross-region filtering failed: {filter_response.text}", filter_response.status_code)
+                    
+            else:
+                self.log_test("/listings (with allow_cross_region=true)", "POST", False, f"Cross-region listing creation failed: {create_response.text}", create_response.status_code)
+                
+        except Exception as e:
+            self.log_test("/cross-region functionality", "MIXED", False, f"Cross-region error: {str(e)}")
     
     def test_admin_endpoints(self):
         """Test admin-only endpoints (region management)"""
