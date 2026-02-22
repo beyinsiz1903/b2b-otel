@@ -883,11 +883,14 @@ metadata:
     file: "frontend/src/App.js"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
         comment: "Cross-region checkbox in listing create/edit, filter toggle, cross-region badge on cards, Bölgeler Arası tab in reports."
+      - working: true
+        agent: "testing"
+        comment: "COMPREHENSIVE UI TESTING COMPLETED ✅ ALL CROSS-REGION UI ELEMENTS WORKING. 1) KENDI KAPASITEM (/availability): Cross-region checkbox '🌍 Bölgeler arası paylaşıma aç' present in Yeni İlan Oluştur form, visible in KAHVALTI section below price input. 2) KAPASITELER (/listings): Cross-region filter checkbox '🌍 Bölgeler arası ilanları dahil et' present in filter panel (Filtrele & Ara section), located next to 'Geçmiş ilanları gizle' checkbox. 3) BÖLGELER ARASI TAB in Reports: Fully functional with Bölge Ağı section displaying all 6 regions (Sapanca, Kartepe, Abant, Ayder, Kas, Alacati), color coding (Mavi: Aktif cross-region ilanı var, Gri: Henüz cross-region ilanı yok), 3 KPI cards showing cross-region statistics. All cross-region features accessible and working correctly."
 
   - task: "Admin Panel (/admin) - Gelir & Bölgeler Tabs"
     implemented: true
