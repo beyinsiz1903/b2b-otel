@@ -929,9 +929,7 @@ metadata:
         comment: "REGION DROPDOWNS: ✅ Region dropdown (BÖLGE) present in filters on Kapasiteler page and Profile page. ✅ All 6 regions available: Sapanca, Kartepe, Abant, Ayder, Kaş (displayed as 'Kas' in some dropdowns), Alaçatı (displayed as 'Alacati' in some dropdowns). ✅ Region selection working across the platform. ✅ Admin panel Bölgeler tab confirms all 6 regions are properly configured with pricing."
 
 test_plan:
-  current_focus:
-    - "Enhanced Reports Page (6 tabs)"
-    - "Cross-region UI testing"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
