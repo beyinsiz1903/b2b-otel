@@ -248,6 +248,7 @@ class AvailabilityListingPublic(BaseModel):
     breakfast_included: Optional[bool] = False
     min_nights: Optional[int] = 1
     guest_restrictions: Optional[List[str]] = None
+    allow_cross_region: Optional[bool] = False
 
 
 class AvailabilityListingMine(AvailabilityListingPublic):
