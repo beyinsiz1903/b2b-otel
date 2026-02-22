@@ -1510,6 +1510,14 @@ const AvailabilityPage = () => {
               onChange={(val) => setForm({ ...form, image_urls_raw: val })}
               label="Resimler (dosyadan yükle veya URL ekle)"
             />
+
+            {/* Bölgeler Arası Paylaşım */}
+            <label className="field" style={{ display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer" }}>
+              <input type="checkbox" checked={form.allow_cross_region} onChange={(e) => setForm({ ...form, allow_cross_region: e.target.checked })} style={{ width: 20, height: 20 }} />
+              <span style={{ fontWeight: 600 }}>🌍 Bölgeler arası paylaşıma aç</span>
+              <span style={{ fontSize: "0.8rem", color: "#6b7c93" }}>Diğer bölgelerdeki oteller de bu ilanı görebilir ve talep gönderebilir</span>
+            </label>
+
             <label className="field">
               <span>Ek Not (opsiyonel)</span>
               <textarea name="notes" value={form.notes} onChange={onChange} placeholder="Misafire iletmek istediğiniz özel not..." rows={2} />
