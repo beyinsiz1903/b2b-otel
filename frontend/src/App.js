@@ -1577,6 +1577,7 @@ const AvailabilityPage = () => {
                         <span className={`status-chip status-${l.availability_status}`}>{statusLabel(l.availability_status)}</span>
                         {expired && <span style={{ fontSize: "0.7rem", color: "#dc2626", fontWeight: 600 }}>Süresi Geçti</span>}
                         {l.is_locked && <span style={{ fontSize: "0.7rem", color: "#d97706", fontWeight: 600 }}>🔒 Kilitli</span>}
+                        {l.allow_cross_region && <span style={{ fontSize: "0.7rem", color: "#1d4ed8", fontWeight: 600 }}>🌍 Cross-Region</span>}
                       </div>
                     </div>
                     <div className="listing-body">
