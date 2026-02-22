@@ -943,6 +943,17 @@ const ListingsPage = () => {
                   Geçmiş ilanları gizle
                 </label>
               </label>
+              <label className="field" style={{ justifyContent: "flex-end" }}>
+                <span>&nbsp;</span>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", cursor: "pointer", padding: "0.6rem 0" }}>
+                  <input
+                    type="checkbox"
+                    checked={filters.include_cross_region}
+                    onChange={(e) => setFilters({ ...filters, include_cross_region: e.target.checked })}
+                  />
+                  🌍 Bölgeler arası ilanları dahil et
+                </label>
+              </label>
             </div>
             <div className="filter-actions">
               <button type="button" className="btn-ghost btn-sm" onClick={resetFilters}>Sıfırla</button>
