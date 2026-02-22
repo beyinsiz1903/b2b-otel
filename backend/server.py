@@ -930,6 +930,7 @@ def listing_to_mine(doc: Dict[str, Any]) -> AvailabilityListingMine:
         breakfast_included=doc.get("breakfast_included", False),
         min_nights=doc.get("min_nights", 1),
         guest_restrictions=doc.get("guest_restrictions"),
+        allow_cross_region=doc.get("allow_cross_region", False),
         template_id=doc.get("template_id"),
         created_at=doc["created_at"],
         updated_at=doc["updated_at"],
