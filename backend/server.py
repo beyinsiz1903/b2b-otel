@@ -3680,7 +3680,7 @@ async def websocket_notifications(websocket: WebSocket, token: Optional[str] = Q
 
 # --- WebSocket Status (Admin) ------------------------------------------------
 
-@api.get("/ws/status")
+@app.get("/api/ws/status")
 async def ws_status(admin: Dict[str, Any] = Depends(get_current_admin)):
     """Admin: WebSocket bağlantı durumu."""
     online_hotels = ws_manager.get_online_hotels()
