@@ -9,11 +9,28 @@ import {
   Link,
   useLocation,
 } from "react-router-dom";
-import axios from "axios";
 import "@/App.css";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+// ── Shared Modules (Modüler Yapı) ────────────────────────────────────────────
+import axios from "@/utils/api";
+import { getToken } from "@/utils/api";
+import {
+  FEATURES_LIST, ROOM_TYPES, GUEST_RESTRICTIONS_LIST,
+  ROOM_TYPES_INV, RULE_TYPES, statusLabel, roomTypeLabel,
+} from "@/utils/constants";
+
+// Contexts
+import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
+import { WSProvider, useWS } from "@/contexts/WSContext";
+import { AuthProvider, useAuth, ProtectedRoute } from "@/contexts/AuthContext";
+
+// Components
+import ErrorBoundary from "@/components/ErrorBoundary";
+import NotFoundPage from "@/components/NotFoundPage";
+import { Skeleton, SkeletonCard } from "@/components/Skeleton";
+import Pagination from "@/components/Pagination";
+import Modal from "@/components/Modal";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 // ── Error Boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
