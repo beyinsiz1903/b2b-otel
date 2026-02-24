@@ -875,6 +875,8 @@ async def update_me(update: HotelMeUpdate, current_hotel: Dict[str, Any] = Depen
 async def change_password(req: ChangePasswordRequest, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
     if not verify_password(req.current_password, current_hotel["password_hash"]):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mevcut şifre yanlış")
+    # Yeni şifre güvenlik kontrolü
+    validate_password(req.new_password)
     new_hash = get_password_hash(req.new_password)
     await db.hotels.update_one({"_id": current_hotel["_id"]}, {"$set": {"password_hash": new_hash, "updated_at": now_utc()}})
     return {"message": "Şifre güncellendi"}
