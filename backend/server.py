@@ -759,6 +759,14 @@ async def register(request: Request, hotel_in: HotelCreate):
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bu e-posta zaten kayıtlı.")
 
+    # Şifre güvenlik kontrolü
+    validate_password(hotel_in.password)
+
+    # Input sanitization
+    hotel_in.name = sanitize_input(hotel_in.name) or hotel_in.name
+    hotel_in.address = sanitize_input(hotel_in.address) or hotel_in.address
+    hotel_in.concept = sanitize_input(hotel_in.concept) or hotel_in.concept
+
     hotel_id = str(uuid.uuid4())
     now = now_utc()
     count = await db.hotels.count_documents({})
