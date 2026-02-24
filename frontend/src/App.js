@@ -596,6 +596,9 @@ const Layout = ({ children }) => {
           <button className="theme-toggle" onClick={toggle} title={dark ? "Açık Mod" : "Koyu Mod"}>
             {dark ? "☀️" : "🌙"}
           </button>
+          <span className={`ws-indicator ${ws.connected ? "ws-online" : "ws-offline"}`} title={ws.connected ? "Gerçek zamanlı bağlantı aktif" : "Bağlantı yok"}>
+            {ws.connected ? "🟢" : "🔴"}
+          </span>
           <Link to="/notifications" className="notification-bell" title="Bildirimler">
             🔔
             {unreadCount > 0 && <span className="notification-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>}
