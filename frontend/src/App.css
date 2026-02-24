@@ -399,12 +399,12 @@ a { text-decoration: none; color: inherit; }
   align-items: center;
   justify-content: space-between;
   padding: 0 1.5rem;
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+  box-shadow: var(--shadow-sm);
 }
 
 .shell-brand {
@@ -413,7 +413,7 @@ a { text-decoration: none; color: inherit; }
   gap: 0.5rem;
   font-weight: 700;
   font-size: 1rem;
-  color: #1a3a2a;
+  color: var(--text-heading);
 }
 
 .shell-brand-icon {
@@ -436,7 +436,7 @@ a { text-decoration: none; color: inherit; }
 
 .shell-user {
   font-size: 0.85rem;
-  color: #6b7c93;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -449,8 +449,8 @@ a { text-decoration: none; color: inherit; }
 .shell-nav {
   width: 230px;
   flex-shrink: 0;
-  border-right: 1px solid #e2e8f0;
-  background: #ffffff;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-nav);
   padding: 1.25rem 0.85rem;
   display: flex;
   flex-direction: column;
@@ -460,7 +460,7 @@ a { text-decoration: none; color: inherit; }
 
 .shell-nav a {
   text-decoration: none;
-  color: #4a5568;
+  color: var(--text-secondary);
   padding: 0.55rem 0.85rem;
   border-radius: 0.65rem;
   font-size: 0.9rem;
@@ -472,26 +472,26 @@ a { text-decoration: none; color: inherit; }
 }
 
 .shell-nav a:hover {
-  background: #f0f9f5;
-  color: #2e6b57;
+  background: var(--bg-hover);
+  color: var(--accent);
 }
 
 .shell-nav a.active {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--accent-light);
+  color: var(--accent-text);
   font-weight: 600;
 }
 
 .shell-nav-divider {
   height: 1px;
-  background: #e2e8f0;
+  background: var(--border-color);
   margin: 0.5rem 0;
 }
 
 .shell-nav-label {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #9ca3af;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 0.5rem 0.85rem 0.25rem;
@@ -509,7 +509,7 @@ a { text-decoration: none; color: inherit; }
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b7c93;
+  color: var(--text-secondary);
 }
 
 /* ===== PAGE HEADER ===== */
