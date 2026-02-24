@@ -1187,16 +1187,24 @@ def request_to_public(doc: Dict[str, Any]) -> RequestPublic:
 
 
 @api.get("/requests/outgoing", response_model=List[RequestPublic])
-async def list_outgoing_requests(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
-    cursor = db.requests.find({"from_hotel_id": current_hotel["_id"]}).sort("created_at", -1)
-    docs = await cursor.to_list(length=500)
+async def list_outgoing_requests(response: Response, skip: int = 0, limit: int = 50, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    query = {"from_hotel_id": current_hotel["_id"]}
+    total = await db.requests.count_documents(query)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    cursor = db.requests.find(query).sort("created_at", -1).skip(skip).limit(limit)
+    docs = await cursor.to_list(length=limit)
     return [request_to_public(d) for d in docs]
 
 
 @api.get("/requests/incoming", response_model=List[RequestPublic])
-async def list_incoming_requests(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
-    cursor = db.requests.find({"to_hotel_id": current_hotel["_id"]}).sort("created_at", -1)
-    docs = await cursor.to_list(length=500)
+async def list_incoming_requests(response: Response, skip: int = 0, limit: int = 50, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    query = {"to_hotel_id": current_hotel["_id"]}
+    total = await db.requests.count_documents(query)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    cursor = db.requests.find(query).sort("created_at", -1).skip(skip).limit(limit)
+    docs = await cursor.to_list(length=limit)
     return [request_to_public(d) for d in docs]
 
 
