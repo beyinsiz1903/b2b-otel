@@ -4482,14 +4482,7 @@ const InventoryPage = () => {
 
 // ── Pricing Engine Page ──────────────────────────────────────────────────────
 
-const RULE_TYPES = [
-  { value: "seasonal", label: "Sezon", icon: "🌞" },
-  { value: "weekend", label: "Hafta Sonu", icon: "📅" },
-  { value: "occupancy", label: "Doluluk", icon: "📊" },
-  { value: "early_bird", label: "Erken Rezervasyon", icon: "🐦" },
-  { value: "last_minute", label: "Son Dakika", icon: "⏰" },
-  { value: "holiday", label: "Tatil/Bayram", icon: "🎉" },
-];
+// ── Pricing Engine Page ──────────────────────────────────────────────────────
 
 const PricingPage = () => {
   const [rules, setRules] = React.useState([]);
