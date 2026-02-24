@@ -136,9 +136,13 @@ const WSProvider = ({ children }) => {
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [lastNotification, setLastNotification] = React.useState(null);
   const [toasts, setToasts] = React.useState([]);
+  const [wsStatus, setWsStatus] = React.useState("disconnected"); // disconnected | connecting | connected | failed
   const wsRef = React.useRef(null);
   const reconnectRef = React.useRef(null);
   const reconnectAttempts = React.useRef(0);
+  const maxReconnectAttempts = 5;
+  const intentionalClose = React.useRef(false);
+  const connectedOnce = React.useRef(false);
 
   const addToast = React.useCallback((notification) => {
     const id = Date.now();
@@ -150,11 +154,21 @@ const WSProvider = ({ children }) => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
+    // Önceki bağlantıyı temizle
+    if (wsRef.current) {
+      intentionalClose.current = true;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    intentionalClose.current = false;
+
     // Build WebSocket URL from backend URL
     const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
     const wsProtocol = backendUrl.startsWith("https") ? "wss" : "ws";
     const wsHost = backendUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
     const wsUrl = `${wsProtocol}://${wsHost}/api/ws/notifications?token=${token}`;
+
+    setWsStatus("connecting");
 
     try {
       const ws = new WebSocket(wsUrl);
@@ -162,7 +176,9 @@ const WSProvider = ({ children }) => {
 
       ws.onopen = () => {
         setConnected(true);
+        setWsStatus("connected");
         reconnectAttempts.current = 0;
+        connectedOnce.current = true;
       };
 
       ws.onmessage = (event) => {
@@ -170,11 +186,13 @@ const WSProvider = ({ children }) => {
           const msg = JSON.parse(event.data);
 
           if (msg.type === "connected") {
-            // Bağlantı onayı
+            // Bağlantı onayı - gerçekten bağlandık
+            setConnected(true);
+            setWsStatus("connected");
           } else if (msg.type === "unread_count") {
             setUnreadCount(msg.data.count);
           } else if (msg.type === "notification") {
-            // Yeni bildirim geldi
+            // Yeni bildirim geldi - gerçek zamanlı!
             setLastNotification(msg.data);
             setUnreadCount((prev) => prev + 1);
             addToast({
@@ -183,37 +201,54 @@ const WSProvider = ({ children }) => {
               type: msg.data.type,
             });
           } else if (msg.type === "pong") {
-            // Ping cevabı
+            // Keep-alive cevabı
           }
         } catch {}
       };
 
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
         setConnected(false);
         wsRef.current = null;
-        // Auto-reconnect with exponential backoff
-        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
-        reconnectAttempts.current += 1;
-        reconnectRef.current = setTimeout(() => {
-          const currentToken = localStorage.getItem("token");
-          if (currentToken) connect();
-        }, delay);
+
+        if (intentionalClose.current) {
+          setWsStatus("disconnected");
+          return;
+        }
+
+        // Proxy/infra sorunları için akıllı reconnect
+        if (reconnectAttempts.current < maxReconnectAttempts) {
+          setWsStatus("connecting");
+          const delay = Math.min(2000 * Math.pow(1.5, reconnectAttempts.current), 30000);
+          reconnectAttempts.current += 1;
+          reconnectRef.current = setTimeout(() => {
+            const currentToken = localStorage.getItem("token");
+            if (currentToken) connect();
+          }, delay);
+        } else {
+          // Max denemeye ulaşıldı - HTTP polling'e düş
+          setWsStatus("failed");
+        }
       };
 
       ws.onerror = () => {
-        // Will trigger onclose
+        // onclose tetiklenecek
       };
-    } catch {}
+    } catch {
+      setWsStatus("failed");
+    }
   }, [addToast]);
 
   const disconnect = React.useCallback(() => {
+    intentionalClose.current = true;
     if (reconnectRef.current) clearTimeout(reconnectRef.current);
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
     setConnected(false);
+    setWsStatus("disconnected");
     setUnreadCount(0);
+    reconnectAttempts.current = 0;
   }, []);
 
   const sendMessage = React.useCallback((msg) => {
