@@ -631,8 +631,8 @@ const Layout = ({ children }) => {
           <button className="theme-toggle" onClick={toggle} title={dark ? "Açık Mod" : "Koyu Mod"}>
             {dark ? "☀️" : "🌙"}
           </button>
-          <span className={`ws-indicator ${ws.connected ? "ws-online" : "ws-offline"}`} title={ws.connected ? "Gerçek zamanlı bağlantı aktif" : "Bağlantı yok"}>
-            {ws.connected ? "🟢" : "🔴"}
+          <span className={`ws-indicator ${ws.connected ? "ws-online" : ws.wsStatus === "connecting" ? "ws-connecting" : ws.wsStatus === "failed" ? "ws-failed" : "ws-offline"}`} title={ws.connected ? "Gerçek zamanlı bağlantı aktif" : ws.wsStatus === "connecting" ? "Bağlanıyor..." : ws.wsStatus === "failed" ? "Bağlantı kurulamadı (HTTP polling aktif)" : "Bağlantı yok"}>
+            {ws.connected ? "🟢" : ws.wsStatus === "connecting" ? "🟡" : "🔴"}
           </span>
           <Link to="/notifications" className="notification-bell" title="Bildirimler">
             🔔
