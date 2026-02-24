@@ -3822,6 +3822,8 @@ const AdminPage = () => {
   const [adminRevenue, setAdminRevenue] = React.useState(null);
   const [regionPricing, setRegionPricing] = React.useState([]);
   const [regionStats, setRegionStats] = React.useState(null);
+  const [activityLogs, setActivityLogs] = React.useState([]);
+  const [logLoading, setLogLoading] = React.useState(false);
 
   React.useEffect(() => {
     if (!hotel?.is_admin) navigate("/dashboard");
