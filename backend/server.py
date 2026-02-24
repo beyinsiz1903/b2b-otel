@@ -82,6 +82,32 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
+def validate_password(password: str) -> None:
+    """Şifre güvenlik kontrolü: en az 8 karakter, 1 büyük harf, 1 rakam."""
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Şifre en az 8 karakter olmalıdır.")
+    if not any(c.isupper() for c in password):
+        raise HTTPException(status_code=400, detail="Şifre en az 1 büyük harf içermelidir.")
+    if not any(c.isdigit() for c in password):
+        raise HTTPException(status_code=400, detail="Şifre en az 1 rakam içermelidir.")
+    if not any(c.islower() for c in password):
+        raise HTTPException(status_code=400, detail="Şifre en az 1 küçük harf içermelidir.")
+
+
+import re as _re
+import html as _html
+
+def sanitize_input(text: Optional[str]) -> Optional[str]:
+    """Temel XSS/HTML injection koruması."""
+    if text is None:
+        return None
+    # HTML entity escape
+    text = _html.escape(text)
+    # Script tag removal
+    text = _re.sub(r'<script[^>]*>.*?</script>', '', text, flags=_re.IGNORECASE | _re.DOTALL)
+    return text.strip()
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES))
