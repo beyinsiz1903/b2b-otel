@@ -606,7 +606,7 @@ const Layout = ({ children }) => {
   // WebSocket ile gerçek zamanlı bildirim sayısı kullan, fallback olarak HTTP poll
   const unreadCount = ws.unreadCount;
 
-  // Eğer WS bağlı değilse fallback poll (her 60 saniyede bir)
+  // Eğer WS bağlı değilse veya başarısız olduysa fallback poll
   React.useEffect(() => {
     if (ws.connected) return; // WS bağlıysa poll yapma
     const loadUnread = async () => {
@@ -616,9 +616,10 @@ const Layout = ({ children }) => {
       } catch {}
     };
     loadUnread();
-    const interval = setInterval(loadUnread, 60000);
+    const pollInterval = ws.wsStatus === "failed" ? 15000 : 60000; // WS başarısız ise daha sık poll
+    const interval = setInterval(loadUnread, pollInterval);
     return () => clearInterval(interval);
-  }, [ws.connected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ws.connected, ws.wsStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="shell">
