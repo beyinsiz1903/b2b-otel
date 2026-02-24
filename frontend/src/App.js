@@ -565,20 +565,25 @@ const Layout = ({ children }) => {
   const { hotel, logout } = useAuth();
   const location = useLocation();
   const { dark, toggle } = useTheme();
+  const ws = useWS();
   const isActive = (path) => location.pathname.startsWith(path) ? "active" : "";
-  const [unreadCount, setUnreadCount] = React.useState(0);
 
+  // WebSocket ile gerçek zamanlı bildirim sayısı kullan, fallback olarak HTTP poll
+  const unreadCount = ws.unreadCount;
+
+  // Eğer WS bağlı değilse fallback poll (her 60 saniyede bir)
   React.useEffect(() => {
+    if (ws.connected) return; // WS bağlıysa poll yapma
     const loadUnread = async () => {
       try {
         const res = await axios.get("/notifications/unread-count");
-        setUnreadCount(res.data.count);
+        ws.setUnreadCount(res.data.count);
       } catch {}
     };
     loadUnread();
-    const interval = setInterval(loadUnread, 30000);
+    const interval = setInterval(loadUnread, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [ws.connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="shell">
