@@ -286,6 +286,7 @@ const AuthContext = React.createContext(null);
 
 const AuthProvider = ({ children }) => {
   const [hotel, setHotel] = React.useState(null);
+  const ws = useWS();
 
   const loadMe = async () => {
     if (!getToken()) return;
@@ -298,7 +299,12 @@ const AuthProvider = ({ children }) => {
     }
   };
 
-  React.useEffect(() => { loadMe(); }, []);
+  React.useEffect(() => {
+    loadMe();
+    // WebSocket bağlantısını başlat (token varsa)
+    if (getToken()) ws.connect();
+    return () => ws.disconnect();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = async (email, password) => {
     const form = new FormData();
@@ -309,9 +315,15 @@ const AuthProvider = ({ children }) => {
     });
     setToken(res.data.access_token);
     await loadMe();
+    // Login sonrası WebSocket bağlan
+    ws.connect();
   };
 
-  const logout = () => { clearToken(); setHotel(null); };
+  const logout = () => {
+    ws.disconnect();
+    clearToken();
+    setHotel(null);
+  };
 
   return (
     <AuthContext.Provider value={{ hotel, login, logout, reload: loadMe }}>
