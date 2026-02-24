@@ -295,7 +295,7 @@ const WSProvider = ({ children }) => {
   ) : null;
 
   return (
-    <WSContext.Provider value={{ connected, unreadCount, lastNotification, connect, disconnect, markRead, markAllRead, setUnreadCount }}>
+    <WSContext.Provider value={{ connected, unreadCount, lastNotification, connect, disconnect, markRead, markAllRead, setUnreadCount, wsStatus }}>
       {children}
       {toastContainer}
     </WSContext.Provider>
