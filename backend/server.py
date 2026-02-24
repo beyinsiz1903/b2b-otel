@@ -3582,6 +3582,124 @@ async def mark_all_notifications_read(current_hotel: Dict[str, Any] = Depends(ge
 
 
 # =============================================================================
+# --- WebSocket Real-time Notifications ----------------------------------------
+# =============================================================================
+
+@api.websocket("/ws/notifications")
+async def websocket_notifications(websocket: WebSocket, token: Optional[str] = Query(None)):
+    """Gerçek zamanlı bildirim WebSocket endpoint'i.
+    Bağlantı: ws://host/api/ws/notifications?token=JWT_TOKEN
+    """
+    if not token:
+        await websocket.close(code=4001, reason="Token gerekli")
+        return
+
+    # Token doğrulama
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        hotel_id = payload.get("sub")
+        if not hotel_id:
+            await websocket.close(code=4001, reason="Geçersiz token")
+            return
+    except JWTError:
+        await websocket.close(code=4001, reason="Geçersiz veya süresi dolmuş token")
+        return
+
+    # Hotel var mı kontrol
+    hotel = await db.hotels.find_one({"_id": hotel_id})
+    if not hotel:
+        await websocket.close(code=4001, reason="Otel bulunamadı")
+        return
+
+    # Bağlantıyı kaydet
+    await ws_manager.connect(hotel_id, websocket)
+    await log_activity(hotel_id, "ws_connect", "websocket", hotel_id, {})
+
+    try:
+        # Bağlantı onay mesajı gönder
+        await websocket.send_json({
+            "type": "connected",
+            "data": {
+                "hotel_id": hotel_id,
+                "hotel_name": hotel.get("name", ""),
+                "message": "Gerçek zamanlı bildirimler aktif",
+                "online_count": ws_manager.get_online_count(),
+            }
+        })
+
+        # Okunmamış bildirim sayısını gönder
+        unread = await db.notifications.count_documents({"hotel_id": hotel_id, "is_read": False})
+        await websocket.send_json({
+            "type": "unread_count",
+            "data": {"count": unread}
+        })
+
+        # Bağlantıyı canlı tut - client mesajlarını dinle
+        while True:
+            try:
+                data = await websocket.receive_json()
+                msg_type = data.get("type", "")
+
+                if msg_type == "ping":
+                    await websocket.send_json({"type": "pong", "data": {"timestamp": now_utc().isoformat()}})
+
+                elif msg_type == "mark_read":
+                    notif_id = data.get("data", {}).get("notification_id")
+                    if notif_id:
+                        await db.notifications.update_one(
+                            {"_id": notif_id, "hotel_id": hotel_id},
+                            {"$set": {"is_read": True}}
+                        )
+                        unread = await db.notifications.count_documents({"hotel_id": hotel_id, "is_read": False})
+                        await websocket.send_json({"type": "unread_count", "data": {"count": unread}})
+
+                elif msg_type == "mark_all_read":
+                    await db.notifications.update_many(
+                        {"hotel_id": hotel_id, "is_read": False},
+                        {"$set": {"is_read": True}}
+                    )
+                    await websocket.send_json({"type": "unread_count", "data": {"count": 0}})
+
+                elif msg_type == "get_unread_count":
+                    unread = await db.notifications.count_documents({"hotel_id": hotel_id, "is_read": False})
+                    await websocket.send_json({"type": "unread_count", "data": {"count": unread}})
+
+            except WebSocketDisconnect:
+                break
+            except Exception:
+                # JSON parse hatası vb. - bağlantıyı kapat
+                break
+
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        ws_manager.disconnect(hotel_id, websocket)
+
+
+# --- WebSocket Status (Admin) ------------------------------------------------
+
+@api.get("/ws/status")
+async def ws_status(admin: Dict[str, Any] = Depends(get_current_admin)):
+    """Admin: WebSocket bağlantı durumu."""
+    online_hotels = ws_manager.get_online_hotels()
+    hotel_names = {}
+    if online_hotels:
+        cursor = db.hotels.find({"_id": {"$in": online_hotels}}, {"_id": 1, "name": 1})
+        async for h in cursor:
+            hotel_names[h["_id"]] = h["name"]
+
+    return {
+        "online_connections": ws_manager.get_online_count(),
+        "online_hotels": [
+            {"hotel_id": hid, "name": hotel_names.get(hid, "Bilinmiyor")}
+            for hid in online_hotels
+        ],
+    }
+
+
+# =============================================================================
 # --- Revenue Reports ---------------------------------------------------------
 # =============================================================================
 
