@@ -975,6 +975,7 @@ def listing_to_mine(doc: Dict[str, Any]) -> AvailabilityListingMine:
 
 @api.get("/listings", response_model=List[AvailabilityListingPublic])
 async def list_listings(
+    response: Response,
     region: Optional[str] = None,
     concept: Optional[str] = None,
     mine: bool = False,
@@ -990,6 +991,9 @@ async def list_listings(
     room_type: Optional[str] = None,
     breakfast_included: Optional[bool] = None,
     include_cross_region: Optional[bool] = False,
+    search: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
     current_hotel: Dict[str, Any] = Depends(get_current_hotel),
 ):
     query: Dict[str, Any] = {}
