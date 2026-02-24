@@ -1043,8 +1043,24 @@ async def list_listings(
     if breakfast_included is not None:
         query["breakfast_included"] = breakfast_included
 
-    cursor = db.availability_listings.find(query).sort("created_at", -1)
-    docs = await cursor.to_list(length=500)
+    # Full-text search across multiple fields
+    if search:
+        search_regex = {"$regex": search, "$options": "i"}
+        query["$or"] = query.get("$or", []) + [
+            {"concept": search_regex},
+            {"micro_location": search_regex},
+            {"notes": search_regex},
+            {"room_type": search_regex},
+            {"capacity_label": search_regex},
+        ]
+
+    # Pagination: get total count
+    total = await db.availability_listings.count_documents(query)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+
+    cursor = db.availability_listings.find(query).sort("created_at", -1).skip(skip).limit(limit)
+    docs = await cursor.to_list(length=limit)
     return [listing_to_public(d) for d in docs]
 
 
