@@ -411,6 +411,7 @@ const roomTypeLabel = (val) => {
 const Layout = ({ children }) => {
   const { hotel, logout } = useAuth();
   const location = useLocation();
+  const { dark, toggle } = useTheme();
   const isActive = (path) => location.pathname.startsWith(path) ? "active" : "";
   const [unreadCount, setUnreadCount] = React.useState(0);
 
