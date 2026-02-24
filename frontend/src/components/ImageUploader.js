@@ -128,5 +128,6 @@ const ImageUploader = ({ value, onChange, label = "Resimler" }) => {
       <div className="field-help">⚠️ Logo, tabela veya iletişim bilgisi görünen görseller kullanmayın.</div>
     </div>
   );
+};
 
 export default ImageUploader;
