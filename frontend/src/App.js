@@ -15,6 +15,119 @@ import "@/App.css";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+// ── Error Boundary ────────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error("ErrorBoundary caught:", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="error-boundary-page">
+          <div className="error-boundary-card">
+            <div style={{ fontSize: "3.5rem", marginBottom: "1rem" }}>⚠️</div>
+            <h1>Bir Hata Oluştu</h1>
+            <p>Beklenmeyen bir sorun meydana geldi. Lütfen sayfayı yenileyin.</p>
+            <p className="error-detail">{this.state.error?.message}</p>
+            <button className="btn-primary" onClick={() => { this.setState({ hasError: false }); window.location.href = "/dashboard"; }}>
+              Ana Sayfaya Dön
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ── 404 NotFound Page ─────────────────────────────────────────────────────────
+const NotFoundPage = () => (
+  <div className="error-boundary-page">
+    <div className="error-boundary-card">
+      <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>🔍</div>
+      <h1 style={{ fontSize: "3rem", color: "#2e6b57", marginBottom: "0.5rem" }}>404</h1>
+      <h2 style={{ marginBottom: "0.5rem" }}>Sayfa Bulunamadı</h2>
+      <p>Aradığınız sayfa mevcut değil veya taşınmış olabilir.</p>
+      <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem" }}>
+        <Link to="/dashboard" className="btn-primary" style={{ textDecoration: "none" }}>Ana Sayfa</Link>
+        <button className="btn-ghost" onClick={() => window.history.back()}>Geri Dön</button>
+      </div>
+    </div>
+  </div>
+);
+
+// ── Skeleton Loader ───────────────────────────────────────────────────────────
+const Skeleton = ({ width = "100%", height = "1rem", style = {}, count = 1 }) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+    {Array.from({ length: count }).map((_, i) => (
+      <div key={i} className="skeleton-box" style={{ width, height, borderRadius: "0.4rem", ...style }} />
+    ))}
+  </div>
+);
+
+const SkeletonCard = () => (
+  <div className="card" style={{ padding: "1.25rem" }}>
+    <Skeleton height="1.2rem" width="60%" />
+    <Skeleton height="0.85rem" width="80%" style={{ marginTop: "0.75rem" }} />
+    <Skeleton height="0.85rem" width="40%" style={{ marginTop: "0.5rem" }} />
+    <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
+      <Skeleton height="2rem" width="5rem" />
+      <Skeleton height="2rem" width="5rem" />
+    </div>
+  </div>
+);
+
+// ── Pagination Component ──────────────────────────────────────────────────────
+const Pagination = ({ total, skip, limit, onChange }) => {
+  if (!total || total <= limit) return null;
+  const pages = Math.ceil(total / limit);
+  const currentPage = Math.floor(skip / limit) + 1;
+  const maxVisible = 5;
+  let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+  let endPage = Math.min(pages, startPage + maxVisible - 1);
+  if (endPage - startPage < maxVisible - 1) startPage = Math.max(1, endPage - maxVisible + 1);
+
+  return (
+    <div className="pagination">
+      <button className="pagination-btn" disabled={currentPage === 1} onClick={() => onChange(0)}>«</button>
+      <button className="pagination-btn" disabled={currentPage === 1} onClick={() => onChange((currentPage - 2) * limit)}>‹</button>
+      {Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i).map((p) => (
+        <button key={p} className={`pagination-btn ${p === currentPage ? "active" : ""}`} onClick={() => onChange((p - 1) * limit)}>
+          {p}
+        </button>
+      ))}
+      <button className="pagination-btn" disabled={currentPage === pages} onClick={() => onChange(currentPage * limit)}>›</button>
+      <button className="pagination-btn" disabled={currentPage === pages} onClick={() => onChange((pages - 1) * limit)}>»</button>
+      <span className="pagination-info">Toplam {total} kayıt</span>
+    </div>
+  );
+};
+
+// ── Dark Mode Context ─────────────────────────────────────────────────────────
+const ThemeContext = React.createContext({ dark: false, toggle: () => {} });
+
+const ThemeProvider = ({ children }) => {
+  const [dark, setDark] = React.useState(() => {
+    const saved = localStorage.getItem("capx-dark-mode");
+    return saved === "true";
+  });
+  React.useEffect(() => {
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    localStorage.setItem("capx-dark-mode", dark);
+  }, [dark]);
+  const toggle = () => setDark((d) => !d);
+  return <ThemeContext.Provider value={{ dark, toggle }}>{children}</ThemeContext.Provider>;
+};
+
+const useTheme = () => React.useContext(ThemeContext);
+
 // Auth utils
 const getToken = () => localStorage.getItem("token");
 const setToken = (t) => localStorage.setItem("token", t || "");
