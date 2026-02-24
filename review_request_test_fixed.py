@@ -10,7 +10,7 @@ import time
 from typing import Dict, Any, Optional, List
 
 # Configuration
-BASE_URL = "https://capacity-share.preview.emergentagent.com/api"
+BASE_URL = "https://improvement-guide-2.preview.emergentagent.com/api"
 TEST_EMAIL = "admin@test.com"
 TEST_PASSWORD = "Admin123"
 
