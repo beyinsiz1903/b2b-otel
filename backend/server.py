@@ -1065,9 +1065,13 @@ async def list_listings(
 
 
 @api.get("/listings/mine", response_model=List[AvailabilityListingMine])
-async def list_mine_listings(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
-    cursor = db.availability_listings.find({"hotel_id": current_hotel["_id"]}).sort("created_at", -1)
-    docs = await cursor.to_list(length=500)
+async def list_mine_listings(response: Response, skip: int = 0, limit: int = 100, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    query = {"hotel_id": current_hotel["_id"]}
+    total = await db.availability_listings.count_documents(query)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    cursor = db.availability_listings.find(query).sort("created_at", -1).skip(skip).limit(limit)
+    docs = await cursor.to_list(length=limit)
     return [listing_to_mine(d) for d in docs]
 
 
