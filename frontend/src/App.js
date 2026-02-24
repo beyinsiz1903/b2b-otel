@@ -435,6 +435,9 @@ const Layout = ({ children }) => {
           CapX Platform
         </div>
         <div className="shell-right">
+          <button className="theme-toggle" onClick={toggle} title={dark ? "Açık Mod" : "Koyu Mod"}>
+            {dark ? "☀️" : "🌙"}
+          </button>
           <Link to="/notifications" className="notification-bell" title="Bildirimler">
             🔔
             {unreadCount > 0 && <span className="notification-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>}
