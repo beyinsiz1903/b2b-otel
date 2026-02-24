@@ -1408,9 +1408,13 @@ async def cancel_request(request_id: str, current_hotel: Dict[str, Any] = Depend
 
 
 @api.get("/matches", response_model=List[MatchPublic])
-async def list_matches(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
-    cursor = db.matches.find({"$or": [{"hotel_a_id": current_hotel["_id"]}, {"hotel_b_id": current_hotel["_id"]}]}).sort("created_at", -1)
-    docs = await cursor.to_list(length=500)
+async def list_matches(response: Response, skip: int = 0, limit: int = 50, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    query = {"$or": [{"hotel_a_id": current_hotel["_id"]}, {"hotel_b_id": current_hotel["_id"]}]}
+    total = await db.matches.count_documents(query)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    cursor = db.matches.find(query).sort("created_at", -1).skip(skip).limit(limit)
+    docs = await cursor.to_list(length=limit)
     return [
         MatchPublic(
             id=d["_id"],
