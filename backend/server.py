@@ -3207,10 +3207,14 @@ async def complete_payment(payment_id: str, current_hotel: Dict[str, Any] = Depe
 
 
 @api.get("/payments")
-async def list_payments(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+async def list_payments(response: Response, skip: int = 0, limit: int = 50, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
     """Otelimin ödemeleri."""
-    cursor = db.payments.find({"hotel_id": current_hotel["_id"]}).sort("created_at", -1)
-    docs = await cursor.to_list(length=200)
+    query = {"hotel_id": current_hotel["_id"]}
+    total = await db.payments.count_documents(query)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    cursor = db.payments.find(query).sort("created_at", -1).skip(skip).limit(limit)
+    docs = await cursor.to_list(length=limit)
     return [serialize_doc(d) for d in docs]
 
 
