@@ -1014,7 +1014,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "V6 Backend improvements verified"
+    - "V6 Frontend improvements tested and verified"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
