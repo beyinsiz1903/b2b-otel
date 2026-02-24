@@ -4283,11 +4283,47 @@ const AdminPage = () => {
           </div>
         </div>
       )}
+
+      {tab === "logs" && (
+        <div>
+          <h2 style={{ marginBottom: "1rem" }}>📜 Aktivite Logları</h2>
+          {logLoading ? (
+            <div className="page-center" style={{ height: 200 }}><span className="loading-spin" /></div>
+          ) : activityLogs.length === 0 ? (
+            <div className="empty-state"><div className="empty-state-icon">📜</div><div className="empty-state-title">Henüz aktivite yok</div></div>
+          ) : (
+            <div className="card">
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Tarih</th><th>Kullanıcı</th><th>İşlem</th><th>Nesne</th><th>Detay</th></tr></thead>
+                  <tbody>
+                    {activityLogs.map((log) => (
+                      <tr key={log.id}>
+                        <td style={{ whiteSpace: "nowrap" }}>{new Date(log.created_at).toLocaleString("tr-TR")}</td>
+                        <td>{log.actor_name}</td>
+                        <td><span className="chip">{log.action}</span></td>
+                        <td>{log.entity}</td>
+                        <td style={{ fontSize: "0.8rem", color: "#6b7c93", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {JSON.stringify(log.metadata || {}).slice(0, 80)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ textAlign: "center", marginTop: "1rem" }}>
+                <button className="btn-ghost btn-sm" onClick={() => {
+                  setLogLoading(true);
+                  axios.get(`/admin/activity-logs?limit=50&skip=${activityLogs.length}`).then(r => setActivityLogs(prev => [...prev, ...r.data])).catch(() => {}).finally(() => setLogLoading(false));
+                }}>Daha Fazla Yükle</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </Layout>
   );
 };
-
-// ── Inventory Management Page ─────────────────────────────────────────────────
 
 const ROOM_TYPES_INV = [
   { value: "standart", label: "Standart Oda" },
