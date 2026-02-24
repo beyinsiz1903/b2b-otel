@@ -578,7 +578,7 @@ a { text-decoration: none; color: inherit; }
 
 .kpi-card span {
   font-size: 0.8rem;
-  color: #6b7c93;
+  color: var(--text-secondary);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -587,13 +587,13 @@ a { text-decoration: none; color: inherit; }
 .kpi-card strong {
   font-size: 1.7rem;
   font-weight: 700;
-  color: #1a3a2a;
+  color: var(--text-heading);
   line-height: 1;
 }
 
 .kpi-card .kpi-sub {
   font-size: 0.78rem;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .kpi-card.kpi-green::before { background: linear-gradient(90deg, #2e6b57, #4ade80); }
