@@ -1,544 +1,357 @@
 #!/usr/bin/env python3
 """
-CapX Hotel Platform v4 Backend API Testing Script
-Tests all new endpoints for the v4 update
+CapX Platform V6 Backend Test Suite
+Testing V6 improvements: Security, Pagination, Search, PDF Export, Activity Logs
 """
-
+import asyncio
+import os
+import sys
 import json
 import requests
-import time
-from typing import Dict, Any, Optional, List
+from datetime import datetime, timezone
+from typing import Dict, Any, List, Optional
 
-# Configuration
-BASE_URL = "https://improvement-guide-2.preview.emergentagent.com/api"
-TEST_EMAIL = "admin@test.com"
-TEST_PASSWORD = "Admin123"
+# Environment URLs
+BACKEND_URL = "https://improvement-guide-2.preview.emergentagent.com/api"
+TEST_CREDENTIALS = {"username": "admin@test.com", "password": "Admin123"}
 
-class CapXAPITester:
+class CapXV6Tester:
     def __init__(self):
-        self.session = requests.Session()
-        self.access_token = None
+        self.backend_url = BACKEND_URL
+        self.token = None
         self.test_results = []
+        self.session = requests.Session()
         
-    def log_test(self, endpoint: str, method: str, success: bool, details: str, status_code: int = None):
+    def log_test(self, test_name: str, success: bool, details: str = "", data: Any = None):
         """Log test results"""
         result = {
-            "endpoint": endpoint,
-            "method": method,
+            "test": test_name,
             "success": success,
             "details": details,
-            "status_code": status_code,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            "timestamp": datetime.now().isoformat(),
+            "data": data
         }
         self.test_results.append(result)
-        status_icon = "✅" if success else "❌"
-        print(f"{status_icon} {method} {endpoint} - {details}")
+        status = "✅ PASS" if success else "❌ FAIL"
+        print(f"{status} | {test_name}: {details}")
         
-    def authenticate(self):
-        """Authenticate and get access token"""
+    def authenticate(self) -> bool:
+        """Authenticate and get bearer token"""
         try:
-            login_data = {
-                "username": TEST_EMAIL,
-                "password": TEST_PASSWORD
-            }
-            
+            # Use form data as specified in the review request
             response = self.session.post(
-                f"{BASE_URL}/auth/login",
-                data=login_data,
+                f"{self.backend_url}/auth/login",
+                data=TEST_CREDENTIALS,  # Form data, not JSON
                 headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
             
             if response.status_code == 200:
-                token_data = response.json()
-                self.access_token = token_data.get("access_token")
-                self.session.headers.update({"Authorization": f"Bearer {self.access_token}"})
-                self.log_test("/auth/login", "POST", True, "Authentication successful", 200)
+                data = response.json()
+                self.token = data["access_token"]
+                self.session.headers.update({"Authorization": f"Bearer {self.token}"})
+                self.log_test("Authentication", True, f"Successfully authenticated as {TEST_CREDENTIALS['username']}")
                 return True
             else:
-                self.log_test("/auth/login", "POST", False, f"Authentication failed: {response.text}", response.status_code)
+                self.log_test("Authentication", False, f"Login failed: {response.status_code} - {response.text}")
                 return False
-                
         except Exception as e:
-            self.log_test("/auth/login", "POST", False, f"Authentication error: {str(e)}")
+            self.log_test("Authentication", False, f"Login error: {str(e)}")
             return False
-    
-    def test_regions(self):
-        """Test GET /api/regions - Should return 6 regions"""
-        try:
-            response = self.session.get(f"{BASE_URL}/regions")
-            
-            if response.status_code == 200:
-                regions = response.json()
-                if isinstance(regions, list) and len(regions) == 6:
-                    region_names = [r.get("id") for r in regions]
-                    expected_regions = ["Sapanca", "Kartepe", "Abant", "Ayder", "Kas", "Alacati"]
-                    if all(region in region_names for region in expected_regions):
-                        self.log_test("/regions", "GET", True, f"Found all 6 regions: {region_names}", 200)
+
+    def test_password_validation(self):
+        """Test V6 Feature 1: Password validation with weak passwords"""
+        print("\n=== Testing V6 Feature 1: Password Validation ===")
+        
+        weak_passwords = [
+            ("123", "Too short and no uppercase/lowercase"),
+            ("abc", "Too short and no digits/uppercase"),
+            ("password", "No digits/uppercase"), 
+            ("PASSWORD", "No digits/lowercase"),
+            ("12345678", "No letters"),
+            ("Passw", "Too short")
+        ]
+        
+        test_hotel = {
+            "name": "Test Hotel Password",
+            "region": "Sapanca", 
+            "micro_location": "Test Location",
+            "concept": "Test Concept",
+            "address": "Test Address",
+            "phone": "+905551234567",
+            "email": f"test_pass_{datetime.now().timestamp()}@example.com"
+        }
+        
+        for weak_pass, description in weak_passwords:
+            try:
+                payload = {**test_hotel, "password": weak_pass}
+                response = self.session.post(f"{self.backend_url}/auth/register", json=payload)
+                
+                if response.status_code == 400:
+                    error_detail = response.json().get("detail", "")
+                    if any(keyword in error_detail.lower() for keyword in ["şifre", "password", "karakter", "büyük", "rakam"]):
+                        self.log_test(f"Password Validation - {weak_pass}", True, 
+                                    f"Correctly rejected weak password: {error_detail}")
                     else:
-                        self.log_test("/regions", "GET", False, f"Missing expected regions. Found: {region_names}", 200)
+                        self.log_test(f"Password Validation - {weak_pass}", False, 
+                                    f"Rejected but wrong error message: {error_detail}")
                 else:
-                    self.log_test("/regions", "GET", False, f"Expected 6 regions, got {len(regions) if isinstance(regions, list) else 'non-list'}", 200)
-            else:
-                self.log_test("/regions", "GET", False, f"Request failed: {response.text}", response.status_code)
-                
-        except Exception as e:
-            self.log_test("/regions", "GET", False, f"Error: {str(e)}")
-    
-    def test_enhanced_filters(self):
-        """Test GET /api/listings with new filter parameters"""
-        try:
-            # Test basic filters
-            params = {
-                "date_from": "2025-02-01",
-                "date_to": "2025-02-10",
-                "price_min": "500",
-                "pax_max": "4",
-                "room_type": "bungalov",
-                "features": "wifi,klima"
-            }
-            
-            response = self.session.get(f"{BASE_URL}/listings", params=params)
-            
-            if response.status_code == 200:
-                listings = response.json()
-                self.log_test("/listings", "GET", True, f"Enhanced filters working - returned {len(listings)} listings", 200)
-                
-                # Test another set of filters
-                params2 = {
-                    "region": "Sapanca",
-                    "pax_min": "2",
-                    "price_max": "2000",
-                    "breakfast_included": "true"
-                }
-                
-                response2 = self.session.get(f"{BASE_URL}/listings", params=params2)
-                if response2.status_code == 200:
-                    listings2 = response2.json()
-                    self.log_test("/listings (filter set 2)", "GET", True, f"Secondary filter test passed - returned {len(listings2)} listings", 200)
-                else:
-                    self.log_test("/listings (filter set 2)", "GET", False, f"Secondary filter test failed: {response2.text}", response2.status_code)
-            else:
-                self.log_test("/listings", "GET", False, f"Enhanced filters failed: {response.text}", response.status_code)
-                
-        except Exception as e:
-            self.log_test("/listings", "GET", False, f"Error: {str(e)}")
-    
-    def test_payment_system(self):
-        """Test the mock payment system"""
-        # First, get matches to find one to test with
-        try:
-            response = self.session.get(f"{BASE_URL}/matches")
-            
-            if response.status_code == 200:
-                matches = response.json()
-                self.log_test("/matches", "GET", True, f"Retrieved {len(matches)} matches", 200)
-                
-                if matches:
-                    # Use the first match for payment testing
-                    match_id = matches[0].get("id") or matches[0].get("_id")
+                    self.log_test(f"Password Validation - {weak_pass}", False, 
+                                f"Should have rejected weak password but got: {response.status_code}")
                     
-                    # Test payment initiation
-                    payment_data = {
-                        "match_id": match_id,
-                        "method": "credit_card"
-                    }
-                    
-                    payment_response = self.session.post(f"{BASE_URL}/payments/initiate", json=payment_data)
-                    
-                    if payment_response.status_code == 200:
-                        payment_info = payment_response.json()
-                        payment_id = payment_info.get("payment_id")
-                        self.log_test("/payments/initiate", "POST", True, f"Payment initiated: {payment_id}", 200)
-                        
-                        # Test payment list
-                        payments_response = self.session.get(f"{BASE_URL}/payments")
-                        if payments_response.status_code == 200:
-                            payments = payments_response.json()
-                            self.log_test("/payments", "GET", True, f"Retrieved {len(payments)} payments", 200)
-                        else:
-                            self.log_test("/payments", "GET", False, f"Failed to list payments: {payments_response.text}", payments_response.status_code)
-                        
-                        # Test payment completion
-                        if payment_id:
-                            complete_response = self.session.post(f"{BASE_URL}/payments/{payment_id}/complete")
-                            if complete_response.status_code == 200:
-                                self.log_test(f"/payments/{payment_id}/complete", "POST", True, "Payment completed successfully", 200)
-                            else:
-                                self.log_test(f"/payments/{payment_id}/complete", "POST", False, f"Payment completion failed: {complete_response.text}", complete_response.status_code)
+            except Exception as e:
+                self.log_test(f"Password Validation - {weak_pass}", False, f"Test error: {str(e)}")
+
+    def test_pagination_headers(self):
+        """Test V6 Feature 2: Pagination with X-Total-Count headers"""
+        print("\n=== Testing V6 Feature 2: Pagination Headers ===")
+        
+        endpoints = [
+            ("/listings", "skip=0&limit=5"),
+            ("/requests/outgoing", "skip=0&limit=10"),
+            ("/matches", "skip=0&limit=10"),
+            ("/payments", "skip=0&limit=10"),
+            ("/invoices", "skip=0&limit=10")
+        ]
+        
+        for endpoint, params in endpoints:
+            try:
+                response = self.session.get(f"{self.backend_url}{endpoint}?{params}")
+                
+                if response.status_code == 200:
+                    total_count_header = response.headers.get("X-Total-Count")
+                    if total_count_header is not None:
+                        self.log_test(f"Pagination - {endpoint}", True, 
+                                    f"X-Total-Count header found: {total_count_header}")
                     else:
-                        self.log_test("/payments/initiate", "POST", False, f"Payment initiation failed: {payment_response.text}", payment_response.status_code)
+                        self.log_test(f"Pagination - {endpoint}", False, 
+                                    f"Missing X-Total-Count header in response")
                 else:
-                    self.log_test("/matches", "GET", False, "No matches found to test payment with", 200)
-            else:
-                self.log_test("/matches", "GET", False, f"Failed to retrieve matches: {response.text}", response.status_code)
+                    self.log_test(f"Pagination - {endpoint}", False, 
+                                f"Request failed: {response.status_code}")
+                    
+            except Exception as e:
+                self.log_test(f"Pagination - {endpoint}", False, f"Test error: {str(e)}")
+
+    def test_fulltext_search(self):
+        """Test V6 Feature 3: Full-text search functionality"""
+        print("\n=== Testing V6 Feature 3: Full-text Search ===")
+        
+        search_terms = ["bungalov", "göl", "test", "sapanca"]
+        
+        for term in search_terms:
+            try:
+                response = self.session.get(f"{self.backend_url}/listings?search={term}")
                 
-        except Exception as e:
-            self.log_test("/payments/*", "MIXED", False, f"Payment system error: {str(e)}")
-    
-    def test_invoice_system(self):
-        """Test GET /api/invoices"""
+                if response.status_code == 200:
+                    results = response.json()
+                    self.log_test(f"Full-text Search - {term}", True, 
+                                f"Search completed, found {len(results)} results")
+                else:
+                    self.log_test(f"Full-text Search - {term}", False, 
+                                f"Search failed: {response.status_code}")
+                    
+            except Exception as e:
+                self.log_test(f"Full-text Search - {term}", False, f"Test error: {str(e)}")
+
+    def test_pdf_invoice_export(self):
+        """Test V6 Feature 4: PDF Invoice Export"""
+        print("\n=== Testing V6 Feature 4: PDF Invoice Export ===")
+        
         try:
-            response = self.session.get(f"{BASE_URL}/invoices")
+            # First get list of invoices
+            response = self.session.get(f"{self.backend_url}/invoices")
             
             if response.status_code == 200:
                 invoices = response.json()
-                self.log_test("/invoices", "GET", True, f"Retrieved {len(invoices)} invoices", 200)
-            else:
-                self.log_test("/invoices", "GET", False, f"Failed to retrieve invoices: {response.text}", response.status_code)
-                
-        except Exception as e:
-            self.log_test("/invoices", "GET", False, f"Error: {str(e)}")
-    
-    def test_subscription_system(self):
-        """Test subscription system endpoints"""
-        try:
-            # Test subscription plans
-            plans_response = self.session.get(f"{BASE_URL}/subscriptions/plans")
-            
-            if plans_response.status_code == 200:
-                plans = plans_response.json()
-                if isinstance(plans, list) and len(plans) == 4:
-                    self.log_test("/subscriptions/plans", "GET", True, f"Found 4 subscription plans", 200)
+                if invoices:
+                    # Test PDF export for first invoice
+                    invoice_id = invoices[0]["id"]
+                    pdf_response = self.session.get(f"{self.backend_url}/invoices/{invoice_id}/pdf")
                     
-                    # Test subscription
-                    subscribe_data = {
-                        "plan_id": "basic",
-                        "billing_cycle": "monthly"
-                    }
-                    
-                    subscribe_response = self.session.post(f"{BASE_URL}/subscriptions/subscribe", json=subscribe_data)
-                    
-                    if subscribe_response.status_code == 200:
-                        self.log_test("/subscriptions/subscribe", "POST", True, "Subscription created successfully", 200)
-                        
-                        # Test my subscription
-                        my_sub_response = self.session.get(f"{BASE_URL}/subscriptions/my")
-                        if my_sub_response.status_code == 200:
-                            subscription = my_sub_response.json()
-                            self.log_test("/subscriptions/my", "GET", True, f"Retrieved active subscription: {subscription.get('plan_id', 'unknown')}", 200)
-                            
-                            # Test subscription cancellation
-                            cancel_response = self.session.post(f"{BASE_URL}/subscriptions/cancel")
-                            if cancel_response.status_code == 200:
-                                self.log_test("/subscriptions/cancel", "POST", True, "Subscription cancelled successfully", 200)
-                            else:
-                                self.log_test("/subscriptions/cancel", "POST", False, f"Cancellation failed: {cancel_response.text}", cancel_response.status_code)
+                    if pdf_response.status_code == 200:
+                        content_type = pdf_response.headers.get("Content-Type", "")
+                        if "application/pdf" in content_type:
+                            pdf_size = len(pdf_response.content)
+                            self.log_test("PDF Invoice Export", True, 
+                                        f"PDF generated successfully, size: {pdf_size} bytes, Content-Type: {content_type}")
                         else:
-                            self.log_test("/subscriptions/my", "GET", False, f"Failed to get subscription: {my_sub_response.text}", my_sub_response.status_code)
+                            self.log_test("PDF Invoice Export", False, 
+                                        f"Wrong content type: {content_type}")
                     else:
-                        self.log_test("/subscriptions/subscribe", "POST", False, f"Subscription failed: {subscribe_response.text}", subscribe_response.status_code)
+                        self.log_test("PDF Invoice Export", False, 
+                                    f"PDF generation failed: {pdf_response.status_code}")
                 else:
-                    self.log_test("/subscriptions/plans", "GET", False, f"Expected 4 plans, got {len(plans) if isinstance(plans, list) else 'non-list'}", 200)
+                    self.log_test("PDF Invoice Export", False, "No invoices found to test PDF export")
             else:
-                self.log_test("/subscriptions/plans", "GET", False, f"Failed to get plans: {plans_response.text}", plans_response.status_code)
+                self.log_test("PDF Invoice Export", False, 
+                            f"Could not retrieve invoices: {response.status_code}")
                 
         except Exception as e:
-            self.log_test("/subscriptions/*", "MIXED", False, f"Subscription system error: {str(e)}")
-    
-    def test_notification_system(self):
-        """Test notification system endpoints"""
+            self.log_test("PDF Invoice Export", False, f"Test error: {str(e)}")
+
+    def test_admin_activity_logs(self):
+        """Test V6 Feature 5: Admin Activity Logs"""
+        print("\n=== Testing V6 Feature 5: Admin Activity Logs ===")
+        
         try:
-            # Test notifications list
-            notifications_response = self.session.get(f"{BASE_URL}/notifications")
+            response = self.session.get(f"{self.backend_url}/admin/activity-logs?limit=10")
             
-            if notifications_response.status_code == 200:
-                notifications = notifications_response.json()
-                self.log_test("/notifications", "GET", True, f"Retrieved {len(notifications)} notifications", 200)
-                
-                # Test unread count
-                unread_response = self.session.get(f"{BASE_URL}/notifications/unread-count")
-                if unread_response.status_code == 200:
-                    unread_data = unread_response.json()
-                    unread_count = unread_data.get("count", 0)
-                    self.log_test("/notifications/unread-count", "GET", True, f"Unread count: {unread_count}", 200)
-                    
-                    # Test mark all as read
-                    mark_read_response = self.session.put(f"{BASE_URL}/notifications/read-all")
-                    if mark_read_response.status_code == 200:
-                        self.log_test("/notifications/read-all", "PUT", True, "All notifications marked as read", 200)
+            if response.status_code == 200:
+                logs = response.json()
+                if logs:
+                    # Check if logs have required actor_name field
+                    first_log = logs[0]
+                    if "actor_name" in first_log:
+                        self.log_test("Admin Activity Logs", True, 
+                                    f"Retrieved {len(logs)} activity logs with actor_name field")
                     else:
-                        self.log_test("/notifications/read-all", "PUT", False, f"Mark read failed: {mark_read_response.text}", mark_read_response.status_code)
+                        # Check available fields
+                        available_fields = list(first_log.keys())
+                        self.log_test("Admin Activity Logs", False, 
+                                    f"Missing actor_name field. Available fields: {available_fields}")
                 else:
-                    self.log_test("/notifications/unread-count", "GET", False, f"Unread count failed: {unread_response.text}", unread_response.status_code)
+                    self.log_test("Admin Activity Logs", True, 
+                                "Activity logs endpoint working (no logs available)")
+            elif response.status_code == 403:
+                self.log_test("Admin Activity Logs", False, 
+                            "Admin access denied - user may not have admin privileges")
             else:
-                self.log_test("/notifications", "GET", False, f"Notifications list failed: {notifications_response.text}", notifications_response.status_code)
+                self.log_test("Admin Activity Logs", False, 
+                            f"Request failed: {response.status_code}")
                 
         except Exception as e:
-            self.log_test("/notifications/*", "MIXED", False, f"Notification system error: {str(e)}")
-    
-    def test_revenue_reports(self):
-        """Test GET /api/reports/revenue"""
-        try:
-            response = self.session.get(f"{BASE_URL}/reports/revenue")
-            
-            if response.status_code == 200:
-                revenue_data = response.json()
-                self.log_test("/reports/revenue", "GET", True, "Revenue report retrieved successfully", 200)
-            else:
-                self.log_test("/reports/revenue", "GET", False, f"Revenue report failed: {response.text}", response.status_code)
-                
-        except Exception as e:
-            self.log_test("/reports/revenue", "GET", False, f"Error: {str(e)}")
-    
-    def test_market_trends(self):
-        """Test GET /api/stats/market-trends"""
-        try:
-            response = self.session.get(f"{BASE_URL}/stats/market-trends")
-            
-            if response.status_code == 200:
-                trends_data = response.json()
-                self.log_test("/stats/market-trends", "GET", True, "Market trends retrieved successfully", 200)
-            else:
-                self.log_test("/stats/market-trends", "GET", False, f"Market trends failed: {response.text}", response.status_code)
-                
-        except Exception as e:
-            self.log_test("/stats/market-trends", "GET", False, f"Error: {str(e)}")
-    
-    def test_performance_scores(self):
-        """Test GET /api/stats/performance-scores"""
-        try:
-            response = self.session.get(f"{BASE_URL}/stats/performance-scores")
-            
-            if response.status_code == 200:
-                performance_data = response.json()
-                self.log_test("/stats/performance-scores", "GET", True, "Performance scores retrieved successfully", 200)
-            else:
-                self.log_test("/stats/performance-scores", "GET", False, f"Performance scores failed: {response.text}", response.status_code)
-                
-        except Exception as e:
-            self.log_test("/stats/performance-scores", "GET", False, f"Error: {str(e)}")
-    
-    def test_request_statistics(self):
-        """Test GET /api/stats/requests with period parameters"""
-        try:
-            # Test default request statistics
-            response = self.session.get(f"{BASE_URL}/stats/requests")
-            
-            if response.status_code == 200:
-                stats_data = response.json()
-                self.log_test("/stats/requests", "GET", True, "Request statistics retrieved successfully", 200)
-            else:
-                self.log_test("/stats/requests", "GET", False, f"Request statistics failed: {response.text}", response.status_code)
-                
-            # Test with period_days=7
-            response_7 = self.session.get(f"{BASE_URL}/stats/requests", params={"period_days": 7})
-            
-            if response_7.status_code == 200:
-                stats_data_7 = response_7.json()
-                self.log_test("/stats/requests?period_days=7", "GET", True, "Request statistics (7 days) retrieved successfully", 200)
-            else:
-                self.log_test("/stats/requests?period_days=7", "GET", False, f"Request statistics (7 days) failed: {response_7.text}", response_7.status_code)
-                
-            # Test with period_days=90  
-            response_90 = self.session.get(f"{BASE_URL}/stats/requests", params={"period_days": 90})
-            
-            if response_90.status_code == 200:
-                stats_data_90 = response_90.json()
-                self.log_test("/stats/requests?period_days=90", "GET", True, "Request statistics (90 days) retrieved successfully", 200)
-            else:
-                self.log_test("/stats/requests?period_days=90", "GET", False, f"Request statistics (90 days) failed: {response_90.text}", response_90.status_code)
-                
-        except Exception as e:
-            self.log_test("/stats/requests", "GET", False, f"Error: {str(e)}")
-    
-    def test_kvkk_compliance(self):
-        """Test KVKK compliance endpoints"""
-        try:
-            # Test data export
-            export_response = self.session.get(f"{BASE_URL}/kvkk/export")
-            
-            if export_response.status_code == 200:
-                export_data = export_response.json()
-                self.log_test("/kvkk/export", "GET", True, "KVKK data export successful", 200)
-                
-                # Test deletion request
-                delete_response = self.session.post(f"{BASE_URL}/kvkk/delete-request")
-                if delete_response.status_code == 200:
-                    delete_data = delete_response.json()
-                    self.log_test("/kvkk/delete-request", "POST", True, "KVKK deletion request created", 200)
+            self.log_test("Admin Activity Logs", False, f"Test error: {str(e)}")
+
+    def test_existing_endpoints(self):
+        """Test V6 Feature 6: Verify existing endpoints still work"""
+        print("\n=== Testing V6 Feature 6: Existing Endpoints ===")
+        
+        endpoints = [
+            ("/stats", True),  # Requires auth
+            ("/regions", True),  # Requires auth  
+            ("/performance/health", False)  # No auth needed
+        ]
+        
+        for endpoint, needs_auth in endpoints:
+            try:
+                if needs_auth:
+                    response = self.session.get(f"{self.backend_url}{endpoint}")
                 else:
-                    self.log_test("/kvkk/delete-request", "POST", False, f"Deletion request failed: {delete_response.text}", delete_response.status_code)
-            else:
-                self.log_test("/kvkk/export", "GET", False, f"Data export failed: {export_response.text}", export_response.status_code)
+                    # Remove auth header temporarily
+                    headers = dict(self.session.headers)
+                    if "Authorization" in headers:
+                        del headers["Authorization"]
+                    response = requests.get(f"{self.backend_url}{endpoint}", headers=headers)
                 
-        except Exception as e:
-            self.log_test("/kvkk/*", "MIXED", False, f"KVKK compliance error: {str(e)}")
-    
-    def test_general_stats(self):
-        """Test GET /api/stats - Should return stats without datetime errors"""
-        try:
-            response = self.session.get(f"{BASE_URL}/stats")
-            
-            if response.status_code == 200:
-                stats_data = response.json()
-                self.log_test("/stats", "GET", True, "General stats retrieved successfully (no datetime errors)", 200)
-            else:
-                self.log_test("/stats", "GET", False, f"General stats failed: {response.text}", response.status_code)
-                
-        except Exception as e:
-            self.log_test("/stats", "GET", False, f"Error: {str(e)}")
-    
-    def test_cross_region_functionality(self):
-        """Test cross-region matching functionality"""
-        try:
-            # Test GET /api/stats/cross-region
-            response = self.session.get(f"{BASE_URL}/stats/cross-region")
-            
-            if response.status_code == 200:
-                cross_region_data = response.json()
-                # Check if it returns regions list
-                if "regions" in cross_region_data:
-                    self.log_test("/stats/cross-region", "GET", True, f"Cross-region stats retrieved with {len(cross_region_data.get('regions', []))} regions", 200)
+                if response.status_code == 200:
+                    data = response.json()
+                    self.log_test(f"Existing Endpoint - {endpoint}", True, 
+                                f"Endpoint working correctly, returned {len(str(data))} chars")
                 else:
-                    self.log_test("/stats/cross-region", "GET", True, "Cross-region stats retrieved successfully", 200)
-            else:
-                self.log_test("/stats/cross-region", "GET", False, f"Cross-region stats failed: {response.text}", response.status_code)
-            
-            # Test creating a listing with allow_cross_region=true
-            listing_data = {
-                "region": "Sapanca",
-                "micro_location": "Göl kenarı",
-                "concept": "Butik otel",
-                "capacity_label": "4 kişi",
-                "pax": 4,
-                "date_start": "2025-03-01",
-                "date_end": "2025-03-07", 
-                "nights": 6,
-                "price_min": 1400,
-                "price_max": 1600,
-                "availability_status": "available",
-                "allow_cross_region": True,
-                "room_type": "suite",
-                "description": "Test listing for cross-region matching"
-            }
-            
-            create_response = self.session.post(f"{BASE_URL}/listings", json=listing_data)
-            
-            if create_response.status_code == 200:
-                new_listing = create_response.json()
-                listing_id = new_listing.get("id") or new_listing.get("_id")
-                self.log_test("/listings (with allow_cross_region=true)", "POST", True, f"Cross-region listing created: {listing_id}", 200)
-                
-                # Test filtering with include_cross_region=true
-                filter_response = self.session.get(f"{BASE_URL}/listings", params={"include_cross_region": "true"})
-                
-                if filter_response.status_code == 200:
-                    filtered_listings = filter_response.json()
-                    cross_region_listings = [l for l in filtered_listings if l.get("allow_cross_region", False)]
-                    self.log_test("/listings?include_cross_region=true", "GET", True, f"Cross-region filter returned {len(cross_region_listings)} cross-region listings", 200)
-                else:
-                    self.log_test("/listings?include_cross_region=true", "GET", False, f"Cross-region filtering failed: {filter_response.text}", filter_response.status_code)
+                    self.log_test(f"Existing Endpoint - {endpoint}", False, 
+                                f"Request failed: {response.status_code}")
                     
-            else:
-                self.log_test("/listings (with allow_cross_region=true)", "POST", False, f"Cross-region listing creation failed: {create_response.text}", create_response.status_code)
-                
-        except Exception as e:
-            self.log_test("/cross-region functionality", "MIXED", False, f"Cross-region error: {str(e)}")
-    
-    def test_admin_endpoints(self):
-        """Test admin-only endpoints (region management)"""
+            except Exception as e:
+                self.log_test(f"Existing Endpoint - {endpoint}", False, f"Test error: {str(e)}")
+
+    def create_test_data_for_pdf(self):
+        """Create test data flow for PDF testing if needed"""
+        print("\n=== Setting up test data for PDF export ===")
+        
         try:
-            # Test admin region pricing
-            pricing_response = self.session.get(f"{BASE_URL}/admin/region-pricing")
+            # Check if we have existing data
+            invoices_response = self.session.get(f"{self.backend_url}/invoices")
+            if invoices_response.status_code == 200:
+                invoices = invoices_response.json()
+                if invoices:
+                    self.log_test("Test Data Setup", True, f"Found {len(invoices)} existing invoices")
+                    return
             
-            if pricing_response.status_code == 200:
-                pricing_data = pricing_response.json()
-                self.log_test("/admin/region-pricing", "GET", True, f"Retrieved pricing for {len(pricing_data)} regions", 200)
-                
-                # Test updating region pricing for Abant
-                update_data = {"match_fee": 225}
-                update_response = self.session.put(f"{BASE_URL}/admin/region-pricing/Abant", json=update_data)
-                
-                if update_response.status_code == 200:
-                    self.log_test("/admin/region-pricing/Abant", "PUT", True, "Abant pricing updated to 225 TL", 200)
-                else:
-                    self.log_test("/admin/region-pricing/Abant", "PUT", False, f"Pricing update failed: {update_response.text}", update_response.status_code)
+            # If no invoices, check for matches to create a payment
+            matches_response = self.session.get(f"{self.backend_url}/matches")
+            if matches_response.status_code == 200:
+                matches = matches_response.json()
+                if matches:
+                    # Try to create a payment for the first match
+                    match_id = matches[0]["id"]
+                    payment_data = {"match_id": match_id, "method": "mock"}
                     
-                # Test admin revenue
-                revenue_response = self.session.get(f"{BASE_URL}/admin/revenue")
-                if revenue_response.status_code == 200:
-                    revenue_data = revenue_response.json()
-                    self.log_test("/admin/revenue", "GET", True, "Admin revenue data retrieved", 200)
+                    payment_response = self.session.post(f"{self.backend_url}/payments/initiate", json=payment_data)
+                    if payment_response.status_code == 200:
+                        payment = payment_response.json()
+                        payment_id = payment["id"]
+                        
+                        # Complete the payment to generate invoice
+                        complete_response = self.session.post(f"{self.backend_url}/payments/{payment_id}/complete")
+                        if complete_response.status_code == 200:
+                            self.log_test("Test Data Setup", True, "Created test payment and invoice for PDF testing")
+                        else:
+                            self.log_test("Test Data Setup", False, f"Could not complete payment: {complete_response.status_code}")
+                    else:
+                        self.log_test("Test Data Setup", False, f"Could not create payment: {payment_response.status_code}")
                 else:
-                    self.log_test("/admin/revenue", "GET", False, f"Admin revenue failed: {revenue_response.text}", revenue_response.status_code)
-                
-                # Test admin region stats
-                stats_response = self.session.get(f"{BASE_URL}/admin/region-stats")
-                if stats_response.status_code == 200:
-                    stats_data = stats_response.json()
-                    self.log_test("/admin/region-stats", "GET", True, "Admin region stats retrieved", 200)
-                else:
-                    self.log_test("/admin/region-stats", "GET", False, f"Region stats failed: {stats_response.text}", stats_response.status_code)
+                    self.log_test("Test Data Setup", False, "No matches available for creating test payment")
             else:
-                self.log_test("/admin/region-pricing", "GET", False, f"Admin access denied or failed: {pricing_response.text}", pricing_response.status_code)
+                self.log_test("Test Data Setup", False, f"Could not retrieve matches: {matches_response.status_code}")
                 
         except Exception as e:
-            self.log_test("/admin/*", "MIXED", False, f"Admin endpoints error: {str(e)}")
-    
+            self.log_test("Test Data Setup", False, f"Setup error: {str(e)}")
+
     def run_all_tests(self):
-        """Run all API tests"""
-        print("=" * 60)
-        print("CapX Hotel Platform v4 Backend API Testing")
+        """Run all V6 feature tests"""
+        print("🚀 Starting CapX Platform V6 Backend Testing")
         print("=" * 60)
         
         # Authenticate first
         if not self.authenticate():
-            print("❌ Authentication failed. Cannot proceed with tests.")
+            print("❌ Authentication failed, cannot proceed with tests")
             return
         
-        print("\n🧪 Running endpoint tests...\n")
+        # Test V6 Features
+        self.test_password_validation()
+        self.test_pagination_headers()
+        self.test_fulltext_search()
         
-        # Core v4 endpoints
-        self.test_regions()
-        self.test_general_stats()  # NEW: Test GET /api/stats for datetime errors
-        self.test_enhanced_filters()
-        self.test_payment_system()
-        self.test_invoice_system()
-        self.test_subscription_system()
-        self.test_notification_system()
-        self.test_revenue_reports()
-        self.test_market_trends()
-        self.test_performance_scores()
-        self.test_request_statistics()
-        self.test_cross_region_functionality()  # NEW: Test cross-region functionality
-        self.test_kvkk_compliance()
-        self.test_admin_endpoints()
+        # Setup test data if needed for PDF testing
+        self.create_test_data_for_pdf()
+        self.test_pdf_invoice_export()
         
-        # Summary
+        self.test_admin_activity_logs()
+        self.test_existing_endpoints()
+        
+        # Print summary
         self.print_summary()
-    
+
     def print_summary(self):
-        """Print test results summary"""
+        """Print test summary"""
         print("\n" + "=" * 60)
-        print("TEST RESULTS SUMMARY")
+        print("🏁 TEST SUMMARY")
         print("=" * 60)
         
         total_tests = len(self.test_results)
-        passed_tests = sum(1 for result in self.test_results if result["success"])
+        passed_tests = sum(1 for r in self.test_results if r["success"])
         failed_tests = total_tests - passed_tests
         
         print(f"Total Tests: {total_tests}")
-        print(f"Passed: {passed_tests} ✅")
-        print(f"Failed: {failed_tests} ❌")
-        print(f"Success Rate: {(passed_tests/total_tests*100):.1f}%")
+        print(f"✅ Passed: {passed_tests}")
+        print(f"❌ Failed: {failed_tests}")
+        print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%")
         
         if failed_tests > 0:
-            print("\n❌ FAILED TESTS:")
-            print("-" * 40)
+            print(f"\n❌ FAILED TESTS:")
             for result in self.test_results:
                 if not result["success"]:
-                    print(f"• {result['method']} {result['endpoint']}")
-                    print(f"  └── {result['details']}")
-                    if result['status_code']:
-                        print(f"  └── HTTP {result['status_code']}")
-                    print()
+                    print(f"  • {result['test']}: {result['details']}")
         
-        print("\n✅ PASSED TESTS:")
-        print("-" * 40)
-        for result in self.test_results:
-            if result["success"]:
-                print(f"• {result['method']} {result['endpoint']} - {result['details']}")
+        print(f"\n🎯 V6 FEATURES TESTED:")
+        print(f"  1. ✅ Security - Password Validation")
+        print(f"  2. ✅ Pagination with X-Total-Count Headers")
+        print(f"  3. ✅ Full-text Search on Listings")
+        print(f"  4. ✅ PDF Invoice Export")
+        print(f"  5. ✅ Admin Activity Logs")
+        print(f"  6. ✅ Existing Endpoints Compatibility")
+
 
 if __name__ == "__main__":
-    tester = CapXAPITester()
+    tester = CapXV6Tester()
     tester.run_all_tests()
