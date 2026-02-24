@@ -128,6 +128,147 @@ const ThemeProvider = ({ children }) => {
 
 const useTheme = () => React.useContext(ThemeContext);
 
+// ── WebSocket Real-time Notifications Context ─────────────────────────────────
+const WSContext = React.createContext({ connected: false, unreadCount: 0, lastNotification: null });
+
+const WSProvider = ({ children }) => {
+  const [connected, setConnected] = React.useState(false);
+  const [unreadCount, setUnreadCount] = React.useState(0);
+  const [lastNotification, setLastNotification] = React.useState(null);
+  const [toasts, setToasts] = React.useState([]);
+  const wsRef = React.useRef(null);
+  const reconnectRef = React.useRef(null);
+  const reconnectAttempts = React.useRef(0);
+
+  const addToast = React.useCallback((notification) => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, ...notification }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  }, []);
+
+  const connect = React.useCallback(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    // Build WebSocket URL from backend URL
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
+    const wsProtocol = backendUrl.startsWith("https") ? "wss" : "ws";
+    const wsHost = backendUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    const wsUrl = `${wsProtocol}://${wsHost}/api/ws/notifications?token=${token}`;
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setConnected(true);
+        reconnectAttempts.current = 0;
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+
+          if (msg.type === "connected") {
+            // Bağlantı onayı
+          } else if (msg.type === "unread_count") {
+            setUnreadCount(msg.data.count);
+          } else if (msg.type === "notification") {
+            // Yeni bildirim geldi
+            setLastNotification(msg.data);
+            setUnreadCount((prev) => prev + 1);
+            addToast({
+              title: msg.data.title,
+              message: msg.data.message,
+              type: msg.data.type,
+            });
+          } else if (msg.type === "pong") {
+            // Ping cevabı
+          }
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        setConnected(false);
+        wsRef.current = null;
+        // Auto-reconnect with exponential backoff
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
+        reconnectAttempts.current += 1;
+        reconnectRef.current = setTimeout(() => {
+          const currentToken = localStorage.getItem("token");
+          if (currentToken) connect();
+        }, delay);
+      };
+
+      ws.onerror = () => {
+        // Will trigger onclose
+      };
+    } catch {}
+  }, [addToast]);
+
+  const disconnect = React.useCallback(() => {
+    if (reconnectRef.current) clearTimeout(reconnectRef.current);
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setConnected(false);
+    setUnreadCount(0);
+  }, []);
+
+  const sendMessage = React.useCallback((msg) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const markRead = React.useCallback((notifId) => {
+    sendMessage({ type: "mark_read", data: { notification_id: notifId } });
+  }, [sendMessage]);
+
+  const markAllRead = React.useCallback(() => {
+    sendMessage({ type: "mark_all_read" });
+    setUnreadCount(0);
+  }, [sendMessage]);
+
+  // Ping/keep-alive every 25 seconds
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 25000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Toast rendering
+  const toastContainer = toasts.length > 0 ? (
+    <div className="ws-toast-container">
+      {toasts.map((t) => (
+        <div key={t.id} className="ws-toast" onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}>
+          <div className="ws-toast-icon">
+            {t.type === "request_received" ? "📋" : t.type === "match_created" ? "🤝" : t.type === "payment_completed" ? "💳" : "🔔"}
+          </div>
+          <div className="ws-toast-body">
+            <div className="ws-toast-title">{t.title}</div>
+            <div className="ws-toast-msg">{t.message}</div>
+          </div>
+          <button className="ws-toast-close" onClick={(e) => { e.stopPropagation(); setToasts((prev) => prev.filter((x) => x.id !== t.id)); }}>✕</button>
+        </div>
+      ))}
+    </div>
+  ) : null;
+
+  return (
+    <WSContext.Provider value={{ connected, unreadCount, lastNotification, connect, disconnect, markRead, markAllRead, setUnreadCount }}>
+      {children}
+      {toastContainer}
+    </WSContext.Provider>
+  );
+};
+
+const useWS = () => React.useContext(WSContext);
+
 // Auth utils
 const getToken = () => localStorage.getItem("token");
 const setToken = (t) => localStorage.setItem("token", t || "");
