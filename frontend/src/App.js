@@ -3959,6 +3959,15 @@ const AdminPage = () => {
         <div className={`admin-tab ${tab === "regions" ? "active" : ""}`} onClick={() => setTab("regions")}>
           🌍 Bölgeler
         </div>
+        <div className={`admin-tab ${tab === "logs" ? "active" : ""}`} onClick={() => {
+          setTab("logs");
+          if (activityLogs.length === 0) {
+            setLogLoading(true);
+            axios.get("/admin/activity-logs?limit=50").then(r => setActivityLogs(r.data)).catch(() => {}).finally(() => setLogLoading(false));
+          }
+        }}>
+          📜 Aktivite Log
+        </div>
       </div>
 
       {loading ? (
