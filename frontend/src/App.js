@@ -4092,16 +4092,7 @@ const AdminPage = () => {
   );
 };
 
-const ROOM_TYPES_INV = [
-  { value: "standart", label: "Standart Oda" },
-  { value: "suite", label: "Suite" },
-  { value: "bungalov", label: "Bungalov" },
-  { value: "villa", label: "Villa" },
-  { value: "apart", label: "Apart" },
-  { value: "dag_evi", label: "Dağ Evi" },
-  { value: "cadir", label: "Çadır/Glamping" },
-  { value: "diger", label: "Diğer" },
-];
+// ── Inventory Management Page ─────────────────────────────────────────────────
 
 const InventoryPage = () => {
   const [items, setItems] = React.useState([]);
