@@ -31,3 +31,5 @@ google-api-python-client>=2.120.0
 slowapi>=0.1.9
 limits>=3.0.0
 deprecated
+fpdf2>=2.7.0
+wrapt>=1.16.0
