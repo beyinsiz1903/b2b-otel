@@ -3254,6 +3254,146 @@ async def get_invoice(invoice_id: str, current_hotel: Dict[str, Any] = Depends(g
     return serialize_doc(invoice)
 
 
+# --- PDF Invoice Export -------------------------------------------------------
+
+@api.get("/invoices/{invoice_id}/pdf")
+async def download_invoice_pdf(invoice_id: str, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+    """Faturayı PDF olarak indir."""
+    from fpdf import FPDF
+    import io
+
+    invoice = await db.invoices.find_one({"_id": invoice_id})
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Fatura bulunamadı")
+    if invoice["hotel_id"] != current_hotel["_id"] and not current_hotel.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Yetkisiz")
+
+    pdf = FPDF()
+    pdf.add_page()
+
+    # Header
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.cell(0, 12, "CapX Platform - Fatura", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.ln(8)
+
+    # Invoice info
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(50, 8, "Fatura No:", new_x="RIGHT")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 8, str(invoice.get("invoice_number", "")), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(50, 8, "Tarih:", new_x="RIGHT")
+    pdf.set_font("Helvetica", "", 11)
+    created = invoice.get("created_at")
+    date_str = created.strftime("%d.%m.%Y") if created else "-"
+    pdf.cell(0, 8, date_str, new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(50, 8, "Otel:", new_x="RIGHT")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 8, str(invoice.get("hotel_name", "")), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(50, 8, "Adres:", new_x="RIGHT")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 8, str(invoice.get("hotel_address", "")), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(50, 8, "Durum:", new_x="RIGHT")
+    pdf.set_font("Helvetica", "", 11)
+    status_map = {"issued": "Kesildi", "paid": "Odendi", "cancelled": "Iptal"}
+    pdf.cell(0, 8, status_map.get(invoice.get("status", ""), invoice.get("status", "")), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(8)
+
+    # Items table
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_fill_color(230, 240, 235)
+    pdf.cell(90, 8, "Aciklama", border=1, fill=True, new_x="RIGHT")
+    pdf.cell(25, 8, "Miktar", border=1, fill=True, align="C", new_x="RIGHT")
+    pdf.cell(35, 8, "Birim Fiyat", border=1, fill=True, align="R", new_x="RIGHT")
+    pdf.cell(35, 8, "Toplam", border=1, fill=True, align="R", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "", 10)
+    for item in invoice.get("items", []):
+        pdf.cell(90, 8, str(item.get("description", "")), border=1, new_x="RIGHT")
+        pdf.cell(25, 8, str(item.get("quantity", 1)), border=1, align="C", new_x="RIGHT")
+        pdf.cell(35, 8, f"TL {item.get('unit_price', 0):.2f}", border=1, align="R", new_x="RIGHT")
+        pdf.cell(35, 8, f"TL {item.get('total', 0):.2f}", border=1, align="R", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(4)
+
+    # Totals
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(150, 8, "Ara Toplam:", align="R", new_x="RIGHT")
+    pdf.cell(35, 8, f"TL {invoice.get('subtotal', 0):.2f}", align="R", new_x="LMARGIN", new_y="NEXT")
+
+    tax_rate = invoice.get("tax_rate", 0.20)
+    pdf.cell(150, 8, f"KDV (%{int(tax_rate*100)}):", align="R", new_x="RIGHT")
+    pdf.cell(35, 8, f"TL {invoice.get('tax_amount', 0):.2f}", align="R", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(150, 10, "GENEL TOPLAM:", align="R", new_x="RIGHT")
+    pdf.cell(35, 10, f"TL {invoice.get('total', 0):.2f}", align="R", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(12)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.cell(0, 6, "Bu fatura CapX Platform tarafindan otomatik olusturulmustur.", align="C")
+
+    # Return PDF as file download
+    pdf_bytes = pdf.output()
+    return Response(
+        content=bytes(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="fatura-{invoice.get("invoice_number", invoice_id)}.pdf"'
+        }
+    )
+
+
+# --- Admin Activity Logs -----------------------------------------------------
+
+@api.get("/admin/activity-logs")
+async def admin_activity_logs(
+    response: Response,
+    skip: int = 0,
+    limit: int = 50,
+    action: Optional[str] = None,
+    actor: Optional[str] = None,
+    admin: Dict[str, Any] = Depends(get_current_admin),
+):
+    """Admin: Aktivite loglarını listele."""
+    query: Dict[str, Any] = {}
+    if action:
+        query["action"] = action
+    if actor:
+        query["actor_hotel_id"] = actor
+
+    total = await db.activity_logs.count_documents(query)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+
+    cursor = db.activity_logs.find(query).sort("created_at", -1).skip(skip).limit(limit)
+    docs = await cursor.to_list(length=limit)
+
+    # Hotel adlarını ekle
+    hotel_ids = set(d.get("actor_hotel_id") for d in docs if d.get("actor_hotel_id"))
+    hotels_map = {}
+    if hotel_ids:
+        hotel_cursor = db.hotels.find({"_id": {"$in": list(hotel_ids)}}, {"_id": 1, "name": 1})
+        async for h in hotel_cursor:
+            hotels_map[h["_id"]] = h["name"]
+
+    result = []
+    for d in docs:
+        item = serialize_doc(d)
+        item["actor_name"] = hotels_map.get(d.get("actor_hotel_id"), "Bilinmiyor")
+        result.append(item)
+
+    return result
+
+
 # =============================================================================
 # --- Subscription System -----------------------------------------------------
 # =============================================================================
