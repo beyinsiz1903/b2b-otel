@@ -5662,7 +5662,18 @@ const InvoicesPage = () => {
                     <td style={{ fontWeight: 600 }}>₺{inv.total?.toFixed(2)}</td>
                     <td><span className={`status-chip status-${inv.status === "issued" ? "pending" : "accepted"}`}>{inv.status === "issued" ? "Kesildi" : "Ödendi"}</span></td>
                     <td>{new Date(inv.created_at).toLocaleDateString("tr-TR")}</td>
-                    <td><button className="btn-ghost btn-sm" onClick={() => setDetail(inv)}>Detay</button></td>
+                    <td><button className="btn-ghost btn-sm" onClick={() => setDetail(inv)}>Detay</button>
+                    <button className="btn-ghost btn-sm" style={{ marginLeft: "0.25rem" }} onClick={async () => {
+                      try {
+                        const res = await axios.get(`/invoices/${inv.id}/pdf`, { responseType: "blob" });
+                        const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `fatura-${inv.invoice_number}.pdf`;
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                      } catch { alert("PDF indirilemedi"); }
+                    }}>📄 PDF</button></td>
                   </tr>
                 ))}
               </tbody>
