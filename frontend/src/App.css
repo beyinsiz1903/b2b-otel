@@ -2338,9 +2338,22 @@ a { text-decoration: none; color: inherit; }
   animation: pulse-green 2s infinite;
 }
 
+.ws-connecting {
+  animation: pulse-yellow 1s infinite;
+}
+
+.ws-failed {
+  opacity: 0.6;
+}
+
 @keyframes pulse-green {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+@keyframes pulse-yellow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 /* Mobile toast */
