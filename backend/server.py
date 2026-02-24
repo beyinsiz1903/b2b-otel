@@ -3585,7 +3585,7 @@ async def mark_all_notifications_read(current_hotel: Dict[str, Any] = Depends(ge
 # --- WebSocket Real-time Notifications ----------------------------------------
 # =============================================================================
 
-@api.websocket("/ws/notifications")
+@app.websocket("/api/ws/notifications")
 async def websocket_notifications(websocket: WebSocket, token: Optional[str] = Query(None)):
     """Gerçek zamanlı bildirim WebSocket endpoint'i.
     Bağlantı: ws://host/api/ws/notifications?token=JWT_TOKEN
