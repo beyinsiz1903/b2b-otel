@@ -1,5 +1,5 @@
 import React from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import axios from "@/utils/api";
 import { useAuth } from "@/contexts/AuthContext";
 import Layout from "@/components/Layout";

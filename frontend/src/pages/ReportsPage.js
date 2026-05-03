@@ -2,6 +2,7 @@ import React from "react";
 import axios from "@/utils/api";
 import { useAuth } from "@/contexts/AuthContext";
 import Layout from "@/components/Layout";
+import { statusLabel } from "@/utils/constants";
 
 const ReportsPage = () => {
   const [stats, setStats] = React.useState(null);
