@@ -3,6 +3,7 @@ import axios from "@/utils/api";
 import { useAuth } from "@/contexts/AuthContext";
 import Layout from "@/components/Layout";
 import Modal from "@/components/Modal";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { ROOM_TYPES_INV, RULE_TYPES } from "@/utils/constants";
 
 // ── Pricing Engine Page ──────────────────────────────────────────────────────

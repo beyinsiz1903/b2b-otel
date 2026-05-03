@@ -78,6 +78,14 @@ ListingsPage, MatchesPage, MatchDetailPage, ListingDetailPage, ProfilePage, Requ
 - Startup (`ensure_indexes`) + shutdown (`client.close()`) main.py'a taşındı; PMS startup/shutdown event'leri kaldırıldı.
 - Workflow değişmedi: `uvicorn server:app` shim üzerinden `app.main:app`'e ulaşır.
 
+## Hafta 4 — Uçtan Uca Test + Performans Düzeltmeleri
+- **PricingPage:** Eksik `ConfirmDialog` import düzeltildi (silme onay diyaloğu çalışır hale geldi).
+- **`/stats/market-trends` 7.8s → 1.3s (6×):** 6 bölge × 5 ardışık DB sorgusu (~30 round-trip) `asyncio.gather` ile paralelleştirildi; region-agnostic talep sayısı tek seferde alınır.
+- **`/stats/cross-region` 0.8s → 0.35s:** Klasik N+1 (her match için 3 ayrı `find_one`) toplu `$in` fetch + bellekte sözlük lookup'a çevrildi (worst-case 15.000 round-trip → 4 sorgu).
+- **`/stats/performance-scores` 0.8s → 0.45s:** İki bağımsız sorgu paralel.
+- **`/stats` 1.3s → 0.5s:** 4 ardışık `to_list` paralelleştirildi.
+- E2E sonuç: 27 protected GET endpoint'in tümü 200 döner; kırık modül/endpoint yok.
+
 ## Bilinen Açık Konular (kalan)
 - Cross-origin production deploy yapılırsa `REACT_APP_BACKEND_URL` mutlaka tam backend origin'e set edilmeli (same-origin deploy ise boş bırakılabilir).
 

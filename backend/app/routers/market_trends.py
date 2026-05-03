@@ -99,45 +99,58 @@ from email_service import (
 
 @api.get("/stats/market-trends")
 async def market_trends(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
-    """Bölge bazlı talep/arz dengesi görselleştirme."""
+    """Bölge bazlı talep/arz dengesi görselleştirme.
+
+    Önceden bölge başına 4-5 ardışık DB round-trip yapılıyordu (6 bölge × ~5
+    sorgu ≈ 30 sıralı round-trip ⇒ ~7-8s). Aynı veri, region-agnostic talepleri
+    bir kez sayıp diğer per-region sayımları `asyncio.gather` ile paralel
+    çalıştırarak elde edilir; davranış birebir korunur.
+    """
     now = now_utc()
     thirty_days_ago = now - timedelta(days=30)
 
-    result = {}
-    for region_key, region_info in REGIONS.items():
-        # Aktif ilanlar (arz)
-        supply = await db.availability_listings.count_documents({
-            "region": region_key,
-            "date_end": {"$gte": now},
-        })
-        # Son 30 gündeki talepler
-        demand = await db.requests.count_documents({
-            "created_at": {"$gte": thirty_days_ago},
-        })
-        # Bölgedeki eşleşmeler
-        matches = await db.matches.count_documents({
-            "region": region_key,
-            "created_at": {"$gte": thirty_days_ago},
-        })
-        # Bölge eşleşmeleri (region alanı yoksa listing üzerinden)
-        if matches == 0:
-            listing_ids = []
-            async for l in db.availability_listings.find({"region": region_key}, {"_id": 1}):
-                listing_ids.append(l["_id"])
+    # Tüm bölgeler için aynı: son 30 gündeki toplam talep sayısı
+    demand_total_task = db.requests.count_documents({
+        "created_at": {"$gte": thirty_days_ago},
+    })
+
+    async def _region_aggregates(region_key: str):
+        supply, matches_by_region, agg = await asyncio.gather(
+            db.availability_listings.count_documents({
+                "region": region_key,
+                "date_end": {"$gte": now},
+            }),
+            db.matches.count_documents({
+                "region": region_key,
+                "created_at": {"$gte": thirty_days_ago},
+            }),
+            db.availability_listings.aggregate([
+                {"$match": {"region": region_key, "date_end": {"$gte": now}}},
+                {"$group": {"_id": None, "avg_price": {"$avg": "$price_min"}, "count": {"$sum": 1}}},
+            ]).to_list(length=1),
+        )
+        # Fallback: region alanı yoksa, listing üzerinden say
+        if matches_by_region == 0:
+            listing_ids = [l["_id"] async for l in db.availability_listings.find(
+                {"region": region_key}, {"_id": 1}
+            )]
             if listing_ids:
-                matches = await db.matches.count_documents({
+                matches_by_region = await db.matches.count_documents({
                     "listing_id": {"$in": listing_ids},
                     "created_at": {"$gte": thirty_days_ago},
                 })
-
-        # Ortalama fiyat
-        pipeline = [
-            {"$match": {"region": region_key, "date_end": {"$gte": now}}},
-            {"$group": {"_id": None, "avg_price": {"$avg": "$price_min"}, "count": {"$sum": 1}}},
-        ]
-        agg = await db.availability_listings.aggregate(pipeline).to_list(length=1)
         avg_price = agg[0]["avg_price"] if agg else 0
+        return region_key, supply, matches_by_region, avg_price
 
+    region_keys = list(REGIONS.keys())
+    region_results, demand = await asyncio.gather(
+        asyncio.gather(*(_region_aggregates(k) for k in region_keys)),
+        demand_total_task,
+    )
+
+    result = {}
+    for region_key, supply, matches, avg_price in region_results:
+        region_info = REGIONS[region_key]
         result[region_key] = {
             "label": region_info["label"],
             "supply": supply,

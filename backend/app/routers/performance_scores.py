@@ -104,8 +104,14 @@ async def performance_scores(current_hotel: Dict[str, Any] = Depends(get_current
     now = now_utc()
     ninety_days = now - timedelta(days=90)
 
-    # Gelen talepler
-    incoming = await db.requests.find({"to_hotel_id": hotel_id, "created_at": {"$gte": ninety_days}}).to_list(length=1000)
+    # Gelen talepler + eşleşme sayısı paralel.
+    incoming, match_count = await asyncio.gather(
+        db.requests.find({"to_hotel_id": hotel_id, "created_at": {"$gte": ninety_days}}).to_list(length=1000),
+        db.matches.count_documents({
+            "$or": [{"hotel_a_id": hotel_id}, {"hotel_b_id": hotel_id}],
+            "created_at": {"$gte": ninety_days},
+        }),
+    )
     total_incoming = len(incoming)
     accepted = sum(1 for r in incoming if r["status"] == "accepted")
     rejected = sum(1 for r in incoming if r["status"] == "rejected")
@@ -125,12 +131,6 @@ async def performance_scores(current_hotel: Dict[str, Any] = Depends(get_current
     approval_rate = round(accepted / total_incoming * 100, 1) if total_incoming > 0 else 0
     # İptal oranı
     cancellation_rate = round(cancelled / total_incoming * 100, 1) if total_incoming > 0 else 0
-
-    # Eşleşme sayısı
-    match_count = await db.matches.count_documents({
-        "$or": [{"hotel_a_id": hotel_id}, {"hotel_b_id": hotel_id}],
-        "created_at": {"$gte": ninety_days},
-    })
 
     # Skor hesapla (0-100)
     score = 50  # base

@@ -97,16 +97,26 @@ from email_service import (
 # --- Cross-Region Stats & Matching -------------------------------------------
 # =============================================================================
 
+async def _empty_list():
+    return []
+
+
 @api.get("/stats/cross-region")
 async def cross_region_stats(current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
     """Bölgeler arası kapasite paylaşım istatistikleri."""
     now = now_utc()
 
-    # Cross-region ilanlar
-    cross_listings = await db.availability_listings.find({
-        "allow_cross_region": True,
-        "date_end": {"$gte": now},
-    }).to_list(length=500)
+    # Cross-region ilanlar + tüm eşleşmeler paralel.
+    # Önceden her match için 3 ardışık find_one (listing + hotel_a + hotel_b)
+    # yapılıyordu — N=5000 için >15k round-trip. Şimdi tek seferde $in ile çek,
+    # bellekte sözlük ile çöz.
+    cross_listings, all_matches = await asyncio.gather(
+        db.availability_listings.find({
+            "allow_cross_region": True,
+            "date_end": {"$gte": now},
+        }).to_list(length=500),
+        db.matches.find({}).to_list(length=5000),
+    )
 
     # Bölge bazlı cross-region dağılım
     region_cross = defaultdict(lambda: {"listings": 0, "total_pax": 0})
@@ -115,24 +125,34 @@ async def cross_region_stats(current_hotel: Dict[str, Any] = Depends(get_current
         region_cross[r]["listings"] += 1
         region_cross[r]["total_pax"] += l.get("pax", 0)
 
-    # Tüm bölge çiftleri arası eşleşme sayısı
+    # Match'lerin referansladığı listing ve hotel id'lerini topla, tek $in ile çek.
+    listing_ids = list({m.get("listing_id") for m in all_matches if m.get("listing_id")})
+    hotel_ids = list({hid for m in all_matches for hid in (m.get("hotel_a_id"), m.get("hotel_b_id")) if hid})
+
+    listings_map: Dict[Any, Dict[str, Any]] = {}
+    hotels_map: Dict[Any, Dict[str, Any]] = {}
+    if listing_ids or hotel_ids:
+        listings_docs, hotels_docs = await asyncio.gather(
+            db.availability_listings.find({"_id": {"$in": listing_ids}}, {"region": 1}).to_list(length=len(listing_ids)) if listing_ids else _empty_list(),
+            db.hotels.find({"_id": {"$in": hotel_ids}}, {"region": 1}).to_list(length=len(hotel_ids)) if hotel_ids else _empty_list(),
+        )
+        listings_map = {d["_id"]: d for d in listings_docs}
+        hotels_map = {d["_id"]: d for d in hotels_docs}
+
     cross_matches = []
-    all_matches = await db.matches.find({}).to_list(length=5000)
     for m in all_matches:
-        listing = await db.availability_listings.find_one({"_id": m.get("listing_id")})
-        if listing:
-            listing_region = listing.get("region", "")
-            hotel_a = await db.hotels.find_one({"_id": m.get("hotel_a_id")})
-            hotel_b = await db.hotels.find_one({"_id": m.get("hotel_b_id")})
-            if hotel_a and hotel_b:
-                region_a = hotel_a.get("region", "")
-                region_b = hotel_b.get("region", "")
-                if region_a != region_b:
-                    cross_matches.append({
-                        "from_region": region_a,
-                        "to_region": region_b,
-                        "listing_region": listing_region,
-                    })
+        listing = listings_map.get(m.get("listing_id"))
+        hotel_a = hotels_map.get(m.get("hotel_a_id"))
+        hotel_b = hotels_map.get(m.get("hotel_b_id"))
+        if listing and hotel_a and hotel_b:
+            region_a = hotel_a.get("region", "")
+            region_b = hotel_b.get("region", "")
+            if region_a != region_b:
+                cross_matches.append({
+                    "from_region": region_a,
+                    "to_region": region_b,
+                    "listing_region": listing.get("region", ""),
+                })
 
     # Bölge çiftleri
     pair_counts = defaultdict(int)
