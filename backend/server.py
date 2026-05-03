@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import DuplicateKeyError
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -393,6 +394,15 @@ class MatchPublic(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
+    new_password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
     new_password: str
 
 
@@ -791,7 +801,8 @@ async def auto_create_invoice(hotel_id: str, payment_id: str, match_id: str, amo
 # --- Auth endpoints ---------------------------------------------------------
 
 @api.post("/auth/register-upload")
-async def register_upload(file: UploadFile = File(...)):
+@limiter.limit("10/minute")
+async def register_upload(request: Request, file: UploadFile = File(...)):
     """Kayıt sırasında belge yükleme (auth gerektirmez)."""
     allowed = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
     mime = file.content_type or ""
@@ -944,7 +955,8 @@ async def update_me(update: HotelMeUpdate, current_hotel: Dict[str, Any] = Depen
 
 
 @api.post("/auth/change-password")
-async def change_password(req: ChangePasswordRequest, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
+@limiter.limit("10/minute")
+async def change_password(request: Request, req: ChangePasswordRequest, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
     if not verify_password(req.current_password, current_hotel["password_hash"]):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mevcut şifre yanlış")
     # Yeni şifre güvenlik kontrolü
@@ -952,6 +964,70 @@ async def change_password(req: ChangePasswordRequest, current_hotel: Dict[str, A
     new_hash = get_password_hash(req.new_password)
     await db.hotels.update_one({"_id": current_hotel["_id"]}, {"$set": {"password_hash": new_hash, "updated_at": now_utc()}})
     return {"message": "Şifre güncellendi"}
+
+
+@api.post("/auth/forgot-password")
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, body: ForgotPasswordRequest):
+    """Şifre sıfırlama isteği. E-posta sistemde varsa token üretilir.
+
+    Güvenlik: kullanıcı sayımı sızdırmamak için her durumda 200 döner.
+    Token DB'de hash'lenmiş şekilde saklanır; düz token yalnızca dev modunda
+    response içinde döner. Üretimde e-posta sistemi entegre edilmeli.
+    """
+    import secrets, hashlib
+    hotel = await db.hotels.find_one({"email": body.email.lower()})
+    response = {"message": "Eğer e-posta sistemde kayıtlıysa sıfırlama bağlantısı gönderildi."}
+
+    if hotel:
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        await db.password_reset_tokens.insert_one({
+            "_id": str(uuid.uuid4()),
+            "hotel_id": hotel["_id"],
+            "token_hash": token_hash,
+            "expires_at": now_utc() + timedelta(hours=1),
+            "used_at": None,
+            "created_at": now_utc(),
+        })
+        await log_activity(hotel["_id"], "password_reset_requested", "hotel", hotel["_id"], None)
+        # TODO: E-posta entegrasyonu eklendiğinde buradan gönder
+        if os.environ.get("ENVIRONMENT", "development") != "production":
+            response["debug_token"] = raw_token
+
+    return response
+
+
+@api.post("/auth/reset-password")
+@limiter.limit("5/minute")
+async def reset_password(request: Request, body: ResetPasswordRequest):
+    """Token ile şifre sıfırla. Token tüketimi atomik yapılır (TOCTOU yok)."""
+    import hashlib
+    # Önce şifre formatını doğrula — token'ı boşa harcamayalım
+    validate_password(body.new_password)
+
+    token_hash = hashlib.sha256(body.token.encode()).hexdigest()
+    now = now_utc()
+
+    # ATOMIC tek kullanımlık tüketim
+    record = await db.password_reset_tokens.find_one_and_update(
+        {
+            "token_hash": token_hash,
+            "used_at": None,
+            "expires_at": {"$gt": now},
+        },
+        {"$set": {"used_at": now}},
+    )
+    if not record:
+        raise HTTPException(status_code=400, detail="Geçersiz veya süresi dolmuş token.")
+
+    new_hash = get_password_hash(body.new_password)
+    await db.hotels.update_one(
+        {"_id": record["hotel_id"]},
+        {"$set": {"password_hash": new_hash, "updated_at": now}},
+    )
+    await log_activity(record["hotel_id"], "password_reset_completed", "hotel", record["hotel_id"], None)
+    return {"message": "Şifreniz başarıyla güncellendi."}
 
 
 # --- Listings endpoints -----------------------------------------------------
@@ -1308,9 +1384,34 @@ async def accept_request(request_id: str, current_hotel: Dict[str, Any] = Depend
     if not listing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found")
 
-    now = now_utc()
-    await db.requests.update_one({"_id": req["_id"]}, {"$set": {"status": "accepted", "updated_at": now}})
-    await db.availability_listings.update_one({"_id": listing["_id"]}, {"$set": {"is_locked": False, "lock_request_id": None, "updated_at": now}})
+    # Plan kotasını kontrol et + atomik tüket (kabul eden taraf için)
+    consumed_sub_id = await _consume_match_quota(current_hotel["_id"])
+    prior_status = req["status"]  # Rollback için sakla
+
+    try:
+        now = now_utc()
+        # ATOMIC talep durumu geçişi
+        transition = await db.requests.update_one(
+            {"_id": req["_id"], "status": {"$in": list(REQUEST_STATUS_OPEN)}},
+            {"$set": {"status": "accepted", "updated_at": now}},
+        )
+        if transition.modified_count != 1:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Bu talep bu sırada başka bir aksiyon aldı.")
+
+        unlock = await db.availability_listings.update_one(
+            {"_id": listing["_id"]},
+            {"$set": {"is_locked": False, "lock_request_id": None, "updated_at": now}},
+        )
+        if unlock.matched_count != 1:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing bu sırada silindi")
+    except Exception:
+        # Geçiş öncesi/sırası başarısızlık → kota'yı geri ver, talep durumunu geri al
+        await _refund_match_quota(consumed_sub_id)
+        await db.requests.update_one(
+            {"_id": req["_id"], "status": "accepted"},
+            {"$set": {"status": prior_status, "updated_at": now_utc()}},
+        )
+        raise
 
     ref_code = await next_reference_code(listing["region"])
     fee_amount = await get_region_match_fee(listing["region"])
@@ -1325,13 +1426,33 @@ async def accept_request(request_id: str, current_hotel: Dict[str, Any] = Depend
         "fee_amount": fee_amount,
         "fee_status": "due",
         "region": listing.get("region", "Sapanca"),
+        "status": "active",
+        "inventory_decremented": True,
+        "accepted_by_hotel_id": current_hotel["_id"],
+        "accepted_by_subscription_id": consumed_sub_id,
         "accepted_at": now,
         "created_at": now,
     }
-    await db.matches.insert_one(match_doc)
+    try:
+        await db.matches.insert_one(match_doc)
+    except DuplicateKeyError:
+        await _refund_match_quota(consumed_sub_id)
+        await db.requests.update_one(
+            {"_id": req["_id"], "status": "accepted"},
+            {"$set": {"status": prior_status, "updated_at": now_utc()}},
+        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Bu talep için zaten bir eşleşme var.")
+    except Exception:
+        # Beklenmedik DB/ağ hatası → kotayı geri ver, talep durumunu geri al
+        await _refund_match_quota(consumed_sub_id)
+        await db.requests.update_one(
+            {"_id": req["_id"], "status": "accepted"},
+            {"$set": {"status": prior_status, "updated_at": now_utc()}},
+        )
+        raise
     await log_activity(current_hotel["_id"], "accept", "request", req["_id"], {"match_id": match_id})
 
-    # Envanter otomatik güncelle
+    # Envanter otomatik güncelle (kota zaten _consume_match_quota ile artırıldı)
     await _decrement_inventory_on_match(listing)
 
     # Bildirimler oluştur
@@ -1395,9 +1516,30 @@ async def accept_alternative(request_id: str, current_hotel: Dict[str, Any] = De
     if not listing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found")
 
-    now = now_utc()
-    await db.requests.update_one({"_id": req["_id"]}, {"$set": {"status": "accepted", "updated_at": now}})
-    await db.availability_listings.update_one({"_id": listing["_id"]}, {"$set": {"is_locked": False, "lock_request_id": None, "updated_at": now}})
+    # Plan kotasını kontrol et + atomik tüket
+    consumed_sub_id = await _consume_match_quota(current_hotel["_id"])
+
+    try:
+        now = now_utc()
+        transition = await db.requests.update_one(
+            {"_id": req["_id"], "status": "alternative_offered"},
+            {"$set": {"status": "accepted", "updated_at": now}},
+        )
+        if transition.modified_count != 1:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Bu talep bu sırada başka bir aksiyon aldı.")
+        unlock = await db.availability_listings.update_one(
+            {"_id": listing["_id"]},
+            {"$set": {"is_locked": False, "lock_request_id": None, "updated_at": now}},
+        )
+        if unlock.matched_count != 1:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing bu sırada silindi")
+    except Exception:
+        await _refund_match_quota(consumed_sub_id)
+        await db.requests.update_one(
+            {"_id": req["_id"], "status": "accepted"},
+            {"$set": {"status": "alternative_offered", "updated_at": now_utc()}},
+        )
+        raise
 
     ref_code = await next_reference_code(listing["region"])
     fee_amount = await get_region_match_fee(listing["region"])
@@ -1412,13 +1554,32 @@ async def accept_alternative(request_id: str, current_hotel: Dict[str, Any] = De
         "fee_amount": fee_amount,
         "fee_status": "due",
         "region": listing.get("region", "Sapanca"),
+        "status": "active",
+        "inventory_decremented": True,
+        "accepted_by_hotel_id": current_hotel["_id"],
+        "accepted_by_subscription_id": consumed_sub_id,
         "accepted_at": now,
         "created_at": now,
     }
-    await db.matches.insert_one(match_doc)
+    try:
+        await db.matches.insert_one(match_doc)
+    except DuplicateKeyError:
+        await _refund_match_quota(consumed_sub_id)
+        await db.requests.update_one(
+            {"_id": req["_id"], "status": "accepted"},
+            {"$set": {"status": "alternative_offered", "updated_at": now_utc()}},
+        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Bu talep için zaten bir eşleşme var.")
+    except Exception:
+        await _refund_match_quota(consumed_sub_id)
+        await db.requests.update_one(
+            {"_id": req["_id"], "status": "accepted"},
+            {"$set": {"status": "alternative_offered", "updated_at": now_utc()}},
+        )
+        raise
     await log_activity(current_hotel["_id"], "accept_alternative", "request", req["_id"], {"match_id": match_id})
 
-    # Envanter otomatik güncelle
+    # Envanter otomatik güncelle (kota zaten _consume_match_quota ile artırıldı)
     await _decrement_inventory_on_match(listing)
 
     # Bildirimler
@@ -1477,6 +1638,96 @@ async def cancel_request(request_id: str, current_hotel: Dict[str, Any] = Depend
     await log_activity(current_hotel["_id"], "cancel", "request", req["_id"], None)
     refreshed = await db.requests.find_one({"_id": req["_id"]})
     return request_to_public(refreshed)
+
+
+@api.post("/matches/{match_id}/cancel", response_model=MatchPublic)
+async def cancel_match(
+    match_id: str,
+    body: Optional[Dict[str, str]] = None,
+    current_hotel: Dict[str, Any] = Depends(get_current_hotel),
+):
+    """Kabul edilmiş bir eşleşmeyi iptal et.
+
+    - İki taraftan herhangi biri iptal edebilir.
+    - Envanter geri yüklenir (idempotent: `inventory_decremented` flag'i kontrol edilir).
+    - Karşı tarafa bildirim gönderilir.
+    """
+    match = await db.matches.find_one({"_id": match_id})
+    if not match:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Eşleşme bulunamadı")
+
+    if current_hotel["_id"] not in {match.get("hotel_a_id"), match.get("hotel_b_id")}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu eşleşmeyi iptal etme yetkiniz yok")
+
+    if match.get("status") == "cancelled":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Eşleşme zaten iptal edilmiş")
+
+    reason = (body or {}).get("reason", "")
+    now = now_utc()
+
+    # ATOMIC durum geçişi: yalnızca bir paralel istek başarılı olabilir.
+    update_result = await db.matches.update_one(
+        {"_id": match_id, "status": {"$ne": "cancelled"}},
+        {"$set": {
+            "status": "cancelled",
+            "cancelled_at": now,
+            "cancelled_by": current_hotel["_id"],
+            "cancel_reason": sanitize_input(reason) or "",
+            "updated_at": now,
+        }},
+    )
+    if update_result.modified_count != 1:
+        # Başka bir istek bizden önce iptal etti.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Eşleşme bu sırada başka bir taraf tarafından iptal edildi")
+
+    # Envanteri geri yükle (idempotent: ikinci $set yalnızca flag hâlâ True ise iade etsin)
+    flag_consume = await db.matches.update_one(
+        {"_id": match_id, "inventory_decremented": True},
+        {"$set": {"inventory_decremented": False}},
+    )
+    if flag_consume.modified_count == 1:
+        listing = await db.availability_listings.find_one({"_id": match.get("listing_id")})
+        if listing:
+            await _increment_inventory_on_cancel(listing)
+
+    # Talep durumunu da güncelle
+    if match.get("request_id"):
+        await db.requests.update_one(
+            {"_id": match["request_id"]},
+            {"$set": {"status": "cancelled", "updated_at": now}},
+        )
+
+    # Aboneliğin matches_used sayacını yalnızca kabul eden tarafın aboneliğinden düş.
+    sub_id = match.get("accepted_by_subscription_id")
+    if sub_id:
+        await _refund_match_quota(sub_id)
+    elif match.get("accepted_by_hotel_id"):
+        # Eski (sub_id'siz) eşleşmeler için fallback
+        await _refund_match_quota_by_hotel(match["accepted_by_hotel_id"])
+
+    other_id = match["hotel_b_id"] if current_hotel["_id"] == match["hotel_a_id"] else match["hotel_a_id"]
+    await create_notification(
+        other_id,
+        "match_cancelled",
+        "Eşleşme İptal Edildi",
+        f"{match.get('reference_code', '')} referanslı eşleşme karşı taraf tarafından iptal edildi." + (f" Sebep: {reason}" if reason else ""),
+        {"match_id": match_id},
+    )
+    await log_activity(current_hotel["_id"], "cancel_match", "match", match_id, {"reason": reason})
+
+    refreshed = await db.matches.find_one({"_id": match_id})
+    return MatchPublic(
+        id=refreshed["_id"],
+        request_id=refreshed["request_id"],
+        listing_id=refreshed["listing_id"],
+        hotel_a_id=refreshed["hotel_a_id"],
+        hotel_b_id=refreshed["hotel_b_id"],
+        reference_code=refreshed["reference_code"],
+        fee_amount=refreshed["fee_amount"],
+        fee_status=refreshed["fee_status"],
+        accepted_at=refreshed["accepted_at"],
+        created_at=refreshed["created_at"],
+    )
 
 
 @api.get("/matches", response_model=List[MatchPublic])
@@ -2293,7 +2544,9 @@ MAX_FILE_SIZE_MB = 10
 
 
 @api.post("/upload-image")
+@limiter.limit("30/minute")
 async def upload_image(
+    request: Request,
     file: UploadFile = File(...),
     current_hotel: Dict[str, Any] = Depends(get_current_hotel),
 ):
@@ -2665,6 +2918,111 @@ async def _decrement_inventory_on_match(listing_doc: Dict[str, Any]) -> None:
             })
 
         current_d += timedelta(days=1)
+
+
+async def _increment_inventory_on_cancel(listing_doc: Dict[str, Any]) -> None:
+    """Eşleşme iptal edildiğinde envanteri geri yükle (decrement_inventory'nin tersi)."""
+    hotel_id = listing_doc.get("hotel_id")
+    room_type = listing_doc.get("room_type")
+    if not hotel_id or not room_type:
+        return
+
+    inv = await db.inventory.find_one({"hotel_id": hotel_id, "room_type": room_type})
+    if not inv:
+        return
+
+    date_start = listing_doc.get("date_start")
+    date_end = listing_doc.get("date_end")
+    if not date_start or not date_end:
+        return
+
+    if isinstance(date_start, datetime):
+        d_start = date_start.date()
+    else:
+        d_start = date.fromisoformat(str(date_start)[:10])
+    if isinstance(date_end, datetime):
+        d_end = date_end.date()
+    else:
+        d_end = date.fromisoformat(str(date_end)[:10])
+
+    current_d = d_start
+    while current_d <= d_end:
+        date_str = current_d.isoformat()
+        existing = await db.daily_availability.find_one({
+            "inventory_id": inv["_id"],
+            "date": date_str,
+        })
+        if existing:
+            new_booked = max(existing.get("booked_rooms", 0) - 1, 0)
+            new_available = min(existing.get("available_rooms", 0) + 1, inv["total_rooms"])
+            await db.daily_availability.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {"booked_rooms": new_booked, "available_rooms": new_available, "updated_at": now_utc()}}
+            )
+        current_d += timedelta(days=1)
+
+
+async def _consume_match_quota(hotel_id: str) -> Optional[str]:
+    """Atomik kontrol-ve-artır: kota varsa matches_used'ı 1 artır, yoksa 402 fırlat.
+
+    Dönüş: tüketilen subscription `_id` (ücretsiz plan için None). Bu id refund'da
+    kullanılır — böylece arada plan değişimi olsa bile doğru abonelikten düşülür.
+    """
+    sub = await db.subscriptions.find_one({"hotel_id": hotel_id, "status": "active"}, sort=[("started_at", -1)])
+    if sub:
+        max_matches = sub.get("max_matches", 0)
+        if max_matches == -1:
+            await db.subscriptions.update_one(
+                {"_id": sub["_id"]},
+                {"$inc": {"matches_used": 1}, "$set": {"updated_at": now_utc()}},
+            )
+            return sub["_id"]
+        result = await db.subscriptions.update_one(
+            {"_id": sub["_id"], "status": "active", "matches_used": {"$lt": max_matches}},
+            {"$inc": {"matches_used": 1}, "$set": {"updated_at": now_utc()}},
+        )
+        if result.modified_count != 1:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=f"Plan limitiniz ({max_matches} eşleşme/ay) doldu. Planınızı yükseltin."
+            )
+        return sub["_id"]
+
+    # Ücretsiz plan
+    free_plan = next((p for p in SUBSCRIPTION_PLANS if p["id"] == "free"), None)
+    max_matches = free_plan["max_matches_per_month"] if free_plan else 5
+    if max_matches == -1:
+        return None
+    month_start = datetime(now_utc().year, now_utc().month, 1, tzinfo=timezone.utc)
+    used = await db.matches.count_documents({
+        "$or": [{"hotel_a_id": hotel_id}, {"hotel_b_id": hotel_id}],
+        "accepted_at": {"$gte": month_start},
+        "status": {"$ne": "cancelled"},
+    })
+    if used >= max_matches:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Aylık ücretsiz eşleşme limitiniz ({max_matches}) doldu. Lütfen bir plana geçin."
+        )
+    return None
+
+
+async def _refund_match_quota(subscription_id: Optional[str]) -> None:
+    """Tüketim sırasında dönen subscription_id ile (ya da hotel_id ile) kotayı geri ver."""
+    if not subscription_id:
+        return  # Ücretsiz plan — geri verilecek bir şey yok
+    await db.subscriptions.update_one(
+        {"_id": subscription_id, "matches_used": {"$gt": 0}},
+        {"$inc": {"matches_used": -1}, "$set": {"updated_at": now_utc()}},
+    )
+
+
+async def _refund_match_quota_by_hotel(hotel_id: str) -> None:
+    """Eski iptal akışı için fallback: kabul eden tarafın aktif aboneliğinden düş."""
+    await db.subscriptions.update_one(
+        {"hotel_id": hotel_id, "status": "active", "matches_used": {"$gt": 0}},
+        {"$inc": {"matches_used": -1}, "$set": {"updated_at": now_utc()}},
+    )
 
 
 @api.post("/inventory/check-availability")
@@ -3135,7 +3493,17 @@ async def list_db_indexes(admin: Dict[str, Any] = Depends(get_current_admin)):
 # --- DB Indexes setup -------------------------------------------------------
 
 async def ensure_indexes():
-    """Performans indekslerini oluştur."""
+    """Performans indekslerini oluştur.
+
+    Kritik unique indeksler (`matches.request_id`, `password_reset_tokens.token_hash`)
+    sessizce yutulmaz — yaratılamazsa açıkça raise eder. Diğer indeksler best-effort.
+    """
+    # --- KRİTİK unique indeksler — fail-fast ---
+    # Bir talep için en fazla bir match olabilir; iş mantığı bütünlüğü için zorunlu.
+    await db.matches.create_index("request_id", unique=True)
+    await db.password_reset_tokens.create_index("token_hash", unique=True)
+    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
+
     try:
         # Hotels
         await db.hotels.create_index("email", unique=True)
@@ -3165,6 +3533,10 @@ async def ensure_indexes():
         await db.matches.create_index("hotel_b_id")
         await db.matches.create_index([("hotel_a_id", 1), ("hotel_b_id", 1)])
         await db.matches.create_index("accepted_at")
+        await db.matches.create_index("status")
+
+        # Password reset tokens (hotel_id sadece performans için)
+        await db.password_reset_tokens.create_index("hotel_id")
 
         # Inventory
         await db.inventory.create_index("hotel_id")
