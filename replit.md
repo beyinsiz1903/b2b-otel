@@ -44,14 +44,16 @@ ListingsPage, MatchesPage, MatchDetailPage, ListingDetailPage, ProfilePage, Requ
 - `password_reset_tokens` koleksiyonu için unique + TTL index eklendi (fail-fast).
 - Rate limit kapsamı genişletildi: `change-password` 10/dk, `forgot/reset-password` 5/dk, `register-upload` 10/dk, `upload-image` 30/dk.
 
-## Bilinen Açık Konular (öncelikli)
-- `serialize_doc` & `/matches/{id}` counterparty: hotel_a/hotel_b silinmişse null guard yok.
-- `/admin/matches` payment join eksik (placeholder "-").
-- `/inventory/check-availability` POST + query param uyumsuzluğu.
-- `/pricing/market-comparison` median yalnızca `price_min` üzerinden.
-- WS reconnect 5 deneme sonrası kalıcı kapanır.
-- E-posta gönderimi yok (forgot-password için TODO).
-- `backend/server.py` 4280+ satır tek dosya; modülerleştirme önerilmiş.
+## Son Yapılan Düzeltmeler (Hafta 2)
+- **`/matches/{match_id}` null guard:** `hotel_a`/`hotel_b` silinmişse `_hotel_stub` ile `{id, name: "Silinmiş otel", deleted: true}` döner; eski `hotel_a["_id"]` AttributeError fix.
+- **`/admin/matches` payment join:** N+1 yerine **toplu join** (otel adları + ödeme bilgileri tek sorguda); response'a `amount_paid`, `payment_count`, `last_payment_status`, `last_payment_at` eklendi.
+- **`/inventory/check-availability` body+query desteği:** Pydantic `CheckAvailabilityRequest` body modeli + legacy query params; body öncelik kazanır, ikisi de yoksa 422.
+- **`/pricing/market-comparison` median düzeltmesi:** Median artık `(price_min+price_max)/2` midpoint üzerinden hesaplanır; `median_price_min` ve `median_price_max` ek alanları döner; öneri benchmark olarak `median_price`'ı kullanır (avg_min'e göre daha temsili).
+- **WS reconnect sonsuz backoff:** `maxReconnectAttempts=5` kaldırıldı; backoff 2s→60s exponential cap, token varken sonsuz dener, logout/intentionalClose ile temiz kapanır.
+
+## Bilinen Açık Konular (kalan)
+- E-posta gönderimi yok (`forgot-password` için TODO — Resend/SMTP secret gerekli).
+- `backend/server.py` 4900+ satır tek dosya; modülerleştirme önerilmiş (büyük refactor; ayrı karar).
 
 ## Detaylı Rapor
 `CAPX_INCELEME_RAPORU.md` dosyası uçtan uca incelemeyi, syroce PMS entegrasyon önerisini ve öncelikli aksiyon planını içerir.

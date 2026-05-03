@@ -1767,6 +1767,22 @@ async def get_match(match_id: str, current_hotel: Dict[str, Any] = Depends(get_c
     hotel_b = await db.hotels.find_one({"_id": d["hotel_b_id"]})
     listing = await db.availability_listings.find_one({"_id": d["listing_id"]})
 
+    # Null-guard: taraflardan biri silinmiş olabilir → silinmiş otel için minimal stub döner
+    def _hotel_stub(hotel_id: str) -> Dict[str, Any]:
+        return {"id": hotel_id, "name": "Silinmiş otel", "deleted": True}
+
+    am_a = (current_hotel["_id"] == d["hotel_a_id"])
+    self_doc = serialize_doc(hotel_a) if am_a and hotel_a else (
+        serialize_doc(hotel_b) if hotel_b else _hotel_stub(d["hotel_b_id"])
+    )
+    if am_a and not hotel_a:
+        self_doc = _hotel_stub(d["hotel_a_id"])
+    other_doc = serialize_doc(hotel_b) if am_a and hotel_b else (
+        serialize_doc(hotel_a) if hotel_a else _hotel_stub(d["hotel_a_id"])
+    )
+    if am_a and not hotel_b:
+        other_doc = _hotel_stub(d["hotel_b_id"])
+
     return {
         "id": d["_id"],
         "request_id": d["request_id"],
@@ -1788,8 +1804,8 @@ async def get_match(match_id: str, current_hotel: Dict[str, Any] = Depends(get_c
             "price_min": listing.get("price_min") if listing else None,
         } if listing else None,
         "counterparty": {
-            "self": serialize_doc(hotel_a if hotel_a["_id"] == current_hotel["_id"] else hotel_b),
-            "other": serialize_doc(hotel_b if hotel_a["_id"] == current_hotel["_id"] else hotel_a),
+            "self": self_doc,
+            "other": other_doc,
         },
     }
 
@@ -1979,18 +1995,45 @@ async def admin_reject_hotel(hotel_id: str, body: Dict[str, str], admin: Dict[st
 async def admin_list_matches(admin: Dict[str, Any] = Depends(get_current_admin)):
     cursor = db.matches.find({}).sort("created_at", -1).limit(200)
     docs = await cursor.to_list(length=200)
+    if not docs:
+        return []
+
+    # Toplu join — N+1 yerine tek sorguda otel + ödeme bilgilerini topla
+    hotel_ids = {d["hotel_a_id"] for d in docs} | {d["hotel_b_id"] for d in docs}
+    hotels_cur = db.hotels.find({"_id": {"$in": list(hotel_ids)}}, {"_id": 1, "name": 1})
+    hotels_map = {h["_id"]: h.get("name", "?") async for h in hotels_cur}
+
+    match_ids = [d["_id"] for d in docs]
+    payments_cur = db.payments.find(
+        {"match_id": {"$in": match_ids}},
+        {"_id": 1, "match_id": 1, "hotel_id": 1, "amount": 1, "status": 1, "completed_at": 1, "created_at": 1},
+    )
+    payments_by_match: Dict[str, list] = defaultdict(list)
+    async for p in payments_cur:
+        payments_by_match[p["match_id"]].append(p)
+
     result = []
     for d in docs:
-        hotel_a = await db.hotels.find_one({"_id": d["hotel_a_id"]})
-        hotel_b = await db.hotels.find_one({"_id": d["hotel_b_id"]})
+        m_payments = payments_by_match.get(d["_id"], [])
+        completed = [p for p in m_payments if p.get("status") == "completed"]
+        amount_paid = sum(p.get("amount", 0) for p in completed)
+        last_payment = max(m_payments, key=lambda p: p.get("created_at") or datetime.min.replace(tzinfo=timezone.utc), default=None)
         result.append({
             "id": d["_id"],
             "reference_code": d["reference_code"],
-            "hotel_a_name": hotel_a["name"] if hotel_a else "?",
-            "hotel_b_name": hotel_b["name"] if hotel_b else "?",
+            "hotel_a_name": hotels_map.get(d["hotel_a_id"], "Silinmiş otel"),
+            "hotel_b_name": hotels_map.get(d["hotel_b_id"], "Silinmiş otel"),
             "fee_amount": d["fee_amount"],
             "fee_status": d["fee_status"],
             "accepted_at": d["accepted_at"].isoformat() if isinstance(d.get("accepted_at"), datetime) else None,
+            "amount_paid": amount_paid,
+            "payment_count": len(m_payments),
+            "last_payment_status": last_payment.get("status") if last_payment else None,
+            "last_payment_at": (
+                last_payment.get("completed_at").isoformat()
+                if last_payment and isinstance(last_payment.get("completed_at"), datetime)
+                else None
+            ),
         })
     return result
 
@@ -3025,14 +3068,35 @@ async def _refund_match_quota_by_hotel(hotel_id: str) -> None:
     )
 
 
+class CheckAvailabilityRequest(BaseModel):
+    """Tüm alanlar opsiyonel — query param fallback için boş body de kabul edilir.
+    Eksik alanlar query'den tamamlanır; ikisinde de yoksa 422 dönülür.
+    """
+    room_type: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    date_start: Optional[str] = None
+    date_end: Optional[str] = None
+
+
 @api.post("/inventory/check-availability")
 async def check_availability(
-    room_type: str,
-    date_start: str,
-    date_end: str,
+    payload: Optional[CheckAvailabilityRequest] = None,
+    room_type: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
     current_hotel: Dict[str, Any] = Depends(get_current_hotel),
 ):
-    """Belirli tarih aralığında oda tipi müsaitliğini kontrol et (overbooking engelleme)."""
+    """Belirli tarih aralığında oda tipi müsaitliğini kontrol et (overbooking engelleme).
+
+    Hem JSON body hem de query parametreleri kabul edilir (legacy frontend uyumluluğu).
+    Body öncelik kazanır; body alanı `None` ise query değeri devreye girer.
+    """
+    if payload is not None:
+        room_type = payload.room_type or room_type
+        date_start = payload.date_start or date_start
+        date_end = payload.date_end or date_end
+    if not room_type or not date_start or not date_end:
+        raise HTTPException(status_code=422, detail="room_type, date_start, date_end zorunlu")
+
     inv = await db.inventory.find_one({"hotel_id": current_hotel["_id"], "room_type": room_type})
     if not inv:
         return {"available": True, "message": "Bu oda tipi için envanter tanımı yok, ilan oluşturulabilir", "min_available": None}
@@ -3299,18 +3363,42 @@ async def market_comparison(
     avg_min = round(sum(all_prices_min) / len(all_prices_min), 2) if all_prices_min else None
     avg_max = round(sum(all_prices_max) / len(all_prices_max), 2) if all_prices_max else None
 
-    sorted_prices = sorted(all_prices_min)
-    median_price = sorted_prices[len(sorted_prices) // 2] if sorted_prices else None
+    # Median: price_min ile price_max'in orta noktası üzerinden — daha temsili
+    midpoints = [
+        ((l["price_min"] + l["price_max"]) / 2.0) if l.get("price_min") and l.get("price_max")
+        else (l.get("price_min") or l.get("price_max"))
+        for l in listings
+    ]
+    midpoints = [m for m in midpoints if m is not None]
 
-    my_prices = [l["price_min"] for l in my_listings if l.get("price_min")]
-    my_avg = round(sum(my_prices) / len(my_prices), 2) if my_prices else None
+    def _median(vals):
+        if not vals:
+            return None
+        s = sorted(vals)
+        n = len(s)
+        if n % 2 == 1:
+            return round(s[n // 2], 2)
+        return round((s[n // 2 - 1] + s[n // 2]) / 2.0, 2)
 
-    # Öneri
+    median_price = _median(midpoints)
+    median_price_min = _median(all_prices_min)
+    median_price_max = _median(all_prices_max)
+
+    my_prices_mid = [
+        ((l["price_min"] + l["price_max"]) / 2.0) if l.get("price_min") and l.get("price_max")
+        else (l.get("price_min") or l.get("price_max"))
+        for l in my_listings
+    ]
+    my_prices_mid = [m for m in my_prices_mid if m is not None]
+    my_avg = round(sum(my_prices_mid) / len(my_prices_mid), 2) if my_prices_mid else None
+
+    # Öneri — kıyas için median midpoint kullanılır (avg_min'e göre daha temsili)
     recommendation = "Fiyatlarınız piyasa ortalamasında"
-    if my_avg and avg_min:
-        if my_avg > avg_min * 1.2:
+    benchmark = median_price or avg_min
+    if my_avg and benchmark:
+        if my_avg > benchmark * 1.2:
             recommendation = "Fiyatlarınız piyasa ortalamasının %20'den fazla üstünde. İndirim düşünebilirsiniz."
-        elif my_avg < avg_min * 0.8:
+        elif my_avg < benchmark * 0.8:
             recommendation = "Fiyatlarınız piyasa ortalamasının %20'den fazla altında. Fiyat artışı düşünebilirsiniz."
 
     return {
@@ -3323,7 +3411,9 @@ async def market_comparison(
         "avg_price_max": avg_max,
         "min_price": min(all_prices_min) if all_prices_min else None,
         "max_price": max(all_prices_max) if all_prices_max else None,
-        "median_price": median_price,
+        "median_price": median_price,            # midpoint median (önerilen)
+        "median_price_min": median_price_min,
+        "median_price_max": median_price_max,
         "my_avg_price": my_avg,
         "recommendation": recommendation,
     }

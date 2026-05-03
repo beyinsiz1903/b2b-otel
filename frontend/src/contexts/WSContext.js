@@ -11,7 +11,6 @@ export const WSProvider = ({ children }) => {
   const wsRef = React.useRef(null);
   const reconnectRef = React.useRef(null);
   const reconnectAttempts = React.useRef(0);
-  const maxReconnectAttempts = 5;
   const intentionalClose = React.useRef(false);
   const connectedOnce = React.useRef(false);
 
@@ -51,15 +50,22 @@ export const WSProvider = ({ children }) => {
           }
         } catch {}
       };
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
         setConnected(false); wsRef.current = null;
         if (intentionalClose.current) { setWsStatus("disconnected"); return; }
-        if (reconnectAttempts.current < maxReconnectAttempts) {
-          setWsStatus("connecting");
-          const delay = Math.min(2000 * Math.pow(1.5, reconnectAttempts.current), 30000);
-          reconnectAttempts.current += 1;
-          reconnectRef.current = setTimeout(() => { if (localStorage.getItem("token")) connect(); }, delay);
-        } else { setWsStatus("failed"); }
+        // 4001/4003 → backend kalıcı reddi (token geçersiz/süresi dolmuş, otel bulunamadı).
+        // Sonsuz reconnect döngüsünden kaçın; token'ı temizle ve durdur.
+        if (ev && (ev.code === 4001 || ev.code === 4003)) {
+          try { localStorage.removeItem("token"); } catch (e) {}
+          setWsStatus("auth_failed");
+          return;
+        }
+        // Sonsuz yeniden bağlanma denemesi: backoff 2s → 60s exponential, token varken.
+        if (!localStorage.getItem("token")) { setWsStatus("disconnected"); return; }
+        setWsStatus("connecting");
+        const delay = Math.min(2000 * Math.pow(1.5, Math.min(reconnectAttempts.current, 8)), 60000);
+        reconnectAttempts.current += 1;
+        reconnectRef.current = setTimeout(() => { if (localStorage.getItem("token")) connect(); }, delay);
       };
       ws.onerror = () => {};
     } catch { setWsStatus("failed"); }
