@@ -13,6 +13,22 @@ Türkiye geneli B2B otelden-otele kapasite paylaşım platformu. FastAPI + Mongo
 
 ## Son Yapılan Değişiklikler
 
+### PMS entegrasyonu — `/api/integrations/v1/pms/*` (7 endpoint)
+CapX'in dış PMS sistemleriyle (Syroce vb.) konuşmasını sağlayan tam paket eklendi (`backend/server.py` sonu).
+- `POST /connect` (JWT) → API key + webhook secret üretir; rotation destekli, ham anahtar bir kez döner.
+- `GET /status`, `PUT /callback`, `POST /disconnect` (JWT) → bağlantı yönetimi.
+- `POST /availability/sync` (Bearer API key) → PMS müsaitlik snapshot'ı push'lar; `auto_publish=True` ise `availability_listings`'e idempotent upsert (`pms_external_ref` ile).
+- `POST /reservation/event` (Bearer + HMAC-SHA256 `X-CapX-Signature`) → rezervasyon olayları; `X-CapX-Event-Id` ile idempotent (DuplicateKeyError ile yutulur). İptal olayında PMS dış referansına bağlı ilanlar `closed_by_pms` olur.
+- `GET /recent` (JWT) → debug listesi.
+
+Yeni koleksiyonlar (indeksler `ensure_indexes`'e eklendi):
+- `pms_integrations` (unique `hotel_id`, `api_key_hash` lookup)
+- `pms_availability_snapshots` (`hotel_id`, `received_at` desc)
+- `pms_reservation_events` (`_id` = X-CapX-Event-Id, idempotent)
+- `availability_listings.pms_external_ref` sparse index
+
+PMS tarafı (kullanıcının ayrı Replit sekmesinde yapılacak iş) için detaylı yol haritası: **`PMS_INCELEME_RAPORU.md`** (625 satır, kod blokları + adım adım).
+
 ### Frontend — kritik import düzeltmeleri (8 sayfa)
 ListingsPage, MatchesPage, MatchDetailPage, ListingDetailPage, ProfilePage, RequestsPage, PaymentsPage, ReportsPage — eksik `useNavigate` / `useLocation` / `Link` / `statusLabel` import'ları eklendi.
 
