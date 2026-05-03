@@ -7,7 +7,11 @@ Türkiye geneli B2B otelden-otele kapasite paylaşım platformu. FastAPI + Mongo
 - Bu repo şu an çalıştırılmıyor; iş kapsamı statik kod incelemesi + Türkçe rapor + hedeflenmiş düzeltmeler.
 
 ## Mimari
-- **Backend:** `backend/server.py` — FastAPI, Motor (async MongoDB), JWT auth, slowapi rate limiter, reportlab PDF, Google Sheets OAuth, WebSocket bildirim (`/api/ws/notifications`).
+- **Backend:** `backend/app/` paketi (refactor sonrası) — FastAPI, Motor (async MongoDB), JWT auth, slowapi rate limiter, reportlab PDF, Google Sheets OAuth, WebSocket bildirim (`/api/ws/notifications`). `backend/server.py` artık 8 satırlık geriye dönük uyumlu shim (`from app.main import app`).
+  - `app/config.py`, `app/db.py`, `app/utils.py`, `app/models.py`, `app/security.py`, `app/ws.py`, `app/indexes.py`, `app/api_router.py`, `app/main.py`
+  - `app/services/` — billing, inventory, pms_helpers, sheets_helpers, pricing_engine
+  - `app/routers/` — 25 modül: auth, listings, requests_matches, stats, admin, sheets, templates, files, inventory, pricing, performance, payments, admin_logs, subscriptions, notifications, websocket, reports, market_trends, performance_scores, kvkk, regions, admin_revenue, request_stats, cross_region, pms
+  - Tüm router'lar tek bir paylaşımlı `api = APIRouter(prefix="/api")` üzerinde decorator ile kayıt olur; davranış birebir korundu, 97 unique URL yolu orijinalle eşleşiyor.
 - **Frontend:** `frontend/src/` — React + react-router-dom v6, Tailwind, Craco. 19 sayfa + Layout + AuthContext + WSContext.
 - **Veri akışı:** otel kayıt → admin onay → ilan/talep/eşleşme → ödeme + fatura PDF.
 
@@ -67,8 +71,14 @@ ListingsPage, MatchesPage, MatchDetailPage, ListingDetailPage, ProfilePage, Requ
 - Python deps: fastapi 0.110.1, motor 3.3.1, pymongo 4.5.0, bcrypt 4.1.3, slowapi, aiohttp, google-auth(-oauthlib/-httplib2), google-api-python-client vb. (`uv add` ile yüklendi).
 - Frontend deps: `npm install --legacy-peer-deps` + `ajv@^8` (CRA `ajv-keywords` modul-not-found düzeltmesi).
 
+## Backend Modülerleştirme (Hafta 3)
+- 5056 satırlık `server.py` modüler `app/` paketine bölündü. Toplam 7800+ satır 33 dosyaya dağıtıldı (foundation 8, services 5, router 25, main + shim 2).
+- Davranış birebir korundu: 97 unique route path'i orijinalle EXACT MATCH. Tek shared `api` APIRouter üzerinden mount → URL'ler `/api/...` aynen.
+- WebSocket için ayrı `_ws_router` (`/api/ws/notifications`, `/api/ws/status`) — yolları kendi içinde `/api`'lı tanımlı, app'e doğrudan include.
+- Startup (`ensure_indexes`) + shutdown (`client.close()`) main.py'a taşındı; PMS startup/shutdown event'leri kaldırıldı.
+- Workflow değişmedi: `uvicorn server:app` shim üzerinden `app.main:app`'e ulaşır.
+
 ## Bilinen Açık Konular (kalan)
-- `backend/server.py` 5050+ satır tek dosya; modülerleştirme önerilmiş (büyük refactor; ayrı karar).
 - Cross-origin production deploy yapılırsa `REACT_APP_BACKEND_URL` mutlaka tam backend origin'e set edilmeli (same-origin deploy ise boş bırakılabilir).
 
 ## Detaylı Rapor
