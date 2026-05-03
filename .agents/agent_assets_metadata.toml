@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "6Dnc4shXJdtKocRRT7gTN"
+uri = "file://CAPX_INCELEME_RAPORU.md"
+type = "text"
+title = "CapX İnceleme Raporu (Türkçe)"
