@@ -51,9 +51,15 @@ ListingsPage, MatchesPage, MatchDetailPage, ListingDetailPage, ProfilePage, Requ
 - **`/pricing/market-comparison` median düzeltmesi:** Median artık `(price_min+price_max)/2` midpoint üzerinden hesaplanır; `median_price_min` ve `median_price_max` ek alanları döner; öneri benchmark olarak `median_price`'ı kullanır (avg_min'e göre daha temsili).
 - **WS reconnect sonsuz backoff:** `maxReconnectAttempts=5` kaldırıldı; backoff 2s→60s exponential cap, token varken sonsuz dener, logout/intentionalClose ile temiz kapanır.
 
+## E-posta Entegrasyonu (Resend, Hafta 2)
+- **Replit Resend connector** bağlandı — API anahtarı + from_email connector proxy üzerinden çekilir, cache'lenmez.
+- `backend/email_service.py`: `send_email()`, `build_password_reset_email()`, `EmailNotConfiguredError`.
+- `forgot-password` endpoint artık gerçek e-posta gönderir. Hata durumlarında 200 dönmeye devam eder (kullanıcı sayımı sızdırmaz). `FRONTEND_URL` veya `REPLIT_DEV_DOMAIN`'den reset URL'i türetilir, son çare `localhost:3000`.
+- Yeni frontend sayfaları: `/forgot-password` (e-posta gir → bağlantı gönder), `/reset-password?token=...` (yeni şifre belirle). Login sayfasına "Şifremi Unuttum" linki eklendi.
+- `logger = logging.getLogger("capx")` — server.py'ye standart logging eklendi.
+
 ## Bilinen Açık Konular (kalan)
-- E-posta gönderimi yok (`forgot-password` için TODO — Resend/SMTP secret gerekli).
-- `backend/server.py` 4900+ satır tek dosya; modülerleştirme önerilmiş (büyük refactor; ayrı karar).
+- `backend/server.py` 5050+ satır tek dosya; modülerleştirme önerilmiş (büyük refactor; ayrı karar).
 
 ## Detaylı Rapor
 `CAPX_INCELEME_RAPORU.md` dosyası uçtan uca incelemeyi, syroce PMS entegrasyon önerisini ve öncelikli aksiyon planını içerir.

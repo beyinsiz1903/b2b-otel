@@ -76,6 +76,9 @@ const LoginPage = () => {
           </button>
         </form>
         <div className="auth-links">
+          <Link to="/forgot-password">Şifremi Unuttum</Link>
+        </div>
+        <div className="auth-links">
           Hesabınız yok mu? <Link to="/register">Kayıt Ol</Link>
         </div>
       </div>

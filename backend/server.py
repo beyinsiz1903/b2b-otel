@@ -9,6 +9,13 @@ import os
 import uuid
 import math
 import json
+import logging
+
+# Uvicorn kendi root handler'ını kurar; biz sadece kendi logger seviyemizi
+# ayarlayıp root'a propagate edelim — basicConfig (root handler varsa) yoksayılır.
+logger = logging.getLogger("capx")
+logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
+logger.propagate = True
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, APIRouter, status, Query, UploadFile, File, Request, Response, WebSocket, WebSocketDisconnect, Header
@@ -21,6 +28,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import DuplicateKeyError
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
+
+from email_service import send_email, build_password_reset_email, EmailNotConfiguredError
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -991,7 +1000,23 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest):
             "created_at": now_utc(),
         })
         await log_activity(hotel["_id"], "password_reset_requested", "hotel", hotel["_id"], None)
-        # TODO: E-posta entegrasyonu eklendiğinde buradan gönder
+
+        # E-posta gönderimi (Resend). Hata olsa bile response 200 döner — kullanıcı sayımı sızdırmaz.
+        frontend_base = (
+            os.environ.get("FRONTEND_URL")
+            or (f"https://{os.environ['REPLIT_DEV_DOMAIN']}" if os.environ.get("REPLIT_DEV_DOMAIN") else None)
+            or "http://localhost:3000"
+        ).rstrip("/")
+        reset_url = f"{frontend_base}/reset-password?token={raw_token}"
+        subject, html, text = build_password_reset_email(reset_url, hotel.get("name"))
+        try:
+            await send_email(to=hotel["email"], subject=subject, html=html, text=text)
+            logger.info("Password reset email sent to hotel_id=%s", hotel["_id"])
+        except EmailNotConfiguredError as e:
+            logger.warning("Resend not configured, skipping email: %s", e)
+        except Exception as e:
+            logger.exception("Password reset email send failed: %s", e)
+
         if os.environ.get("ENVIRONMENT", "development") != "production":
             response["debug_token"] = raw_token
 
