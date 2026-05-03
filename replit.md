@@ -58,8 +58,18 @@ ListingsPage, MatchesPage, MatchDetailPage, ListingDetailPage, ProfilePage, Requ
 - Yeni frontend sayfaları: `/forgot-password` (e-posta gir → bağlantı gönder), `/reset-password?token=...` (yeni şifre belirle). Login sayfasına "Şifremi Unuttum" linki eklendi.
 - `logger = logging.getLogger("capx")` — server.py'ye standart logging eklendi.
 
+## Replit Workflow Kurulumu (Hafta 2)
+- **Backend** workflow: `cd backend && uvicorn server:app --host 0.0.0.0 --port 8000 --reload` (console, port 8000). MongoDB Atlas Syroce cluster `MONGO_URL` secret üzerinden.
+- **Frontend** workflow: `cd frontend && npx craco start` (webview, port 5000).
+- `frontend/.env`: `REACT_APP_BACKEND_URL=` (boş → relative URL), `PORT=5000`, `HOST=0.0.0.0`, `DANGEROUSLY_DISABLE_HOST_CHECK=true`, `WDS_SOCKET_PORT=0`, `BROWSER=none`.
+- `frontend/src/setupProxy.js`: `/api` → `http://localhost:8000`, `ws:true` (HTTP + WS proxy birlikte).
+- `WSContext.js` URL fallback: `REACT_APP_BACKEND_URL` boşsa `window.location.host` + protocol (wss/ws) kullanılır — same-origin deploy + dev preview için çalışır.
+- Python deps: fastapi 0.110.1, motor 3.3.1, pymongo 4.5.0, bcrypt 4.1.3, slowapi, aiohttp, google-auth(-oauthlib/-httplib2), google-api-python-client vb. (`uv add` ile yüklendi).
+- Frontend deps: `npm install --legacy-peer-deps` + `ajv@^8` (CRA `ajv-keywords` modul-not-found düzeltmesi).
+
 ## Bilinen Açık Konular (kalan)
 - `backend/server.py` 5050+ satır tek dosya; modülerleştirme önerilmiş (büyük refactor; ayrı karar).
+- Cross-origin production deploy yapılırsa `REACT_APP_BACKEND_URL` mutlaka tam backend origin'e set edilmeli (same-origin deploy ise boş bırakılabilir).
 
 ## Detaylı Rapor
 `CAPX_INCELEME_RAPORU.md` dosyası uçtan uca incelemeyi, syroce PMS entegrasyon önerisini ve öncelikli aksiyon planını içerir.

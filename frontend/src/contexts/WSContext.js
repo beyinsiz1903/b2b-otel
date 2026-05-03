@@ -30,8 +30,15 @@ export const WSProvider = ({ children }) => {
     }
     intentionalClose.current = false;
     const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
-    const wsProtocol = backendUrl.startsWith("https") ? "wss" : "ws";
-    const wsHost = backendUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    let wsProtocol;
+    let wsHost;
+    if (backendUrl) {
+      wsProtocol = backendUrl.startsWith("https") ? "wss" : "ws";
+      wsHost = backendUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    } else {
+      wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+      wsHost = window.location.host;
+    }
     const wsUrl = `${wsProtocol}://${wsHost}/api/ws/notifications?token=${token}`;
     setWsStatus("connecting");
     try {
