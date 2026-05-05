@@ -16,6 +16,14 @@
 # Çıktı: her adım için HTTP code + süre. 4/4 yeşilse exit 0.
 
 set -uo pipefail
+# Güvenlik: bu script secret env'leri (PMS_API_KEY, PMS_WEBHOOK_SECRET) kullanır.
+# `bash -x prod_smoke_pms.sh` ile çağrılsa bile xtrace'i zorla kapatıyoruz ki
+# anahtarlar stdout'a sızmasın. Debug için PMS_SMOKE_DEBUG=1 set edilirse açılır.
+if [ "${PMS_SMOKE_DEBUG:-0}" = "1" ]; then
+  set -x
+else
+  set +x
+fi
 
 : "${PMS_API_KEY:?PMS_API_KEY env zorunlu (capx_pk_...)}"
 : "${PMS_WEBHOOK_SECRET:?PMS_WEBHOOK_SECRET env zorunlu (capx_ws_...)}"

@@ -82,6 +82,7 @@ CapX is a B2B hotel-to-hotel capacity sharing platform for Türkiye, enabling ho
 *   Password reset in development mode returns a `debug_token`; in production, an email integration (e.g., Resend) is required for actual email delivery.
 *   `backend/scripts/bootstrap_pms_uat_tenant.py` is **UAT-only** and refuses to run when `ENV=production` (or `prod`). For prod tenant onboarding, use the admin UI flow that calls `POST /api/integrations/v1/pms/connect` (JWT-protected; raw api_key+webhook_secret returned exactly once).
 *   PMS rate limit returns HTTP 429 + `Retry-After` header on quota exceed. Failed-auth (401) attempts are also counted against the per-tenant quota — a misconfigured PMS client hammering with a wrong api_key will hit 429 after 10 attempts/min on `availability/sync`.
+*   `scripts/prod_smoke_pms.sh` enforces `set +x` internally so that `bash -x` debugging cannot leak `PMS_API_KEY` / `PMS_WEBHOOK_SECRET`. Use `PMS_SMOKE_DEBUG=1` to opt-in to xtrace when needed.
 
 ## Pointers
 
