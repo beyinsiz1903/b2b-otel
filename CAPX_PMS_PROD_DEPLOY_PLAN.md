@@ -62,28 +62,56 @@
 
 ---
 
-## 4) PMS Ekibine İletilecek 3 Soru
+## 4) PMS Ekibinden Alınan Cevaplar (2026-05-05) — ✅ TAM
 
-> CapX prod deploy planı hazır (`CAPX_PMS_PROD_DEPLOY_PLAN.md`). Aşağıdaki üç noktayı netleştirmeden prod'a geçmek istemiyorum, çünkü her biri prod konfigürasyonunu doğrudan etkiliyor.
+### 1. Prod callback URL formatı + geçiş — ✅
+- **Format:** İlk lansman `*.replit.app` (Replit Deployments default). Custom domain (örn. `pms.syroce.com`) Faz 2'de tenant başına eklenecek; prod kanalı bu beklenmeden açılabilir.
+- **Geçiş:** Paralel açık model. PMS prod publish + smoke → yeni base URL gelir → CapX prod admin panelinden tenant `5bad4a34-…` callback URL güncellenir → UAT 7 gün paralel açık (her iki ortam dinler, idempotency_key sayesinde duplicate yok) → Faz 5 yeşilse UAT credential CapX panelinden disable.
 
-### 1. Prod callback URL formatı ve geçiş süreci
-UAT'de bize verdiğiniz callback URL Replit dev domain'i (`cd790339-...kirk.replit.dev`). Prod'da bu URL ne olacak — `*.replit.app` mı, custom domain mı? Ve değişim sırasında nasıl koordine edeceğiz: önce siz prod'a alıp yeni URL'i yazılı bildirin → biz CapX prod admin panelinden tek tıkla güncelleyelim, ardından siz UAT URL'ini decommission edin? Ya da paralel açık dursun belirli bir süre?
+### 2. Prod credential paketi — ✅ ayrı set onaylandı
+- UAT/prod izolasyonu: prod'da yeni hotel + `POST /api/integrations/v1/pms/connect` ile yeni `api_key`+`webhook_secret` üretilir, ham anahtar bir kez döner.
+- PMS tarafında AES-256-GCM şifreli olarak `capx_tenant_credentials` koleksiyonuna yazılır (`PUT /api/capx/tenant-credentials/{tenant_id}`).
+- UAT credential prod'a hiç taşınmaz.
 
-### 2. Prod credential paketi — yeni mi, aynı mı?
-UAT için size verdiğimiz `api_key=capx_pk_lLmp…D1VM` ve webhook_secret prod'da aynı mı kalacak, yoksa prod onboarding ile **yeni bir set** üreteceğiz? CapX tarafındaki best-practice **ayrı set** (UAT/prod credential izolasyonu); ama sizin tarafınızda secret store yönetimi nasıl?  
-Eğer ayrı set istiyorsanız: prod'da yeni hotel kaydı + `POST /api/integrations/v1/pms/connect` ile yeni anahtarlar üretilir, ham anahtar bir kez döner ve sizin vault'unuza işlenir.
+### 3. Prod rate limit / hacim — ✅ sayılar net
+| Metrik | İlk 30 gün | 90 gün hedefi |
+|---|---|---|
+| `availability/sync` | tenant başına ~96/gün (15 dk cron) + manuel UI burst | aynı + OTA push |
+| `reservation/event` | peak ~5 event/sn, ortalama <0.5/sn | peak ~20/sn |
+| Tenant sayısı | 1 (Syroce pilot) | 5–10 |
 
-### 3. Production rate limit / kota beklentisi
-Prod'da iki kalemde planlama bilgisi gerekiyor:
-- **`availability/sync`**: Tipik bir tenant için günde / saatte kaç snapshot push'lanır? OTA-tetikli mi, periyodik (cron) mi? CapX'te tenant başına dakikalık quota (örn. 30/dk) tanımlamamız gerekiyor.
-- **`reservation/event`**: Pik anda (örn. peak season Cuma akşamı) tahmini event/sn nedir? CapX outbound retry mekanizması 4 deneme x 30s'lik tail'de 100k+ event tutar, ama erken alarm eşikleri kalibre etmek için sayı lazım.
-- **Toplam tenant sayısı (ilk 30 / 90 gün)**: 1 mi, 10 mu, 100 mü? DB indeks stratejisi (`pms_integrations.api_key_hash` zaten unique index'li) ve Mongo cluster sizing buna bağlı.
+**PMS önerisi (CapX tarafında uygulanacak):**
+- `availability/sync` → tenant başına **10/dk** (manuel snapshot burst için tampon)
+- `reservation/event` → tenant başına **50/sn** (peak × 2.5 güvenlik payı)
+- Aşımda HTTP **429 + Retry-After**; PMS adapter exponential backoff retry yapar.
 
-Cevaplar gelir gelmez prod publish'i tetikleyebiliriz; teknik tarafta blocker yok.
+---
+
+## 5) CapX Prod Kalan İş Kalemleri (cevaplar sonrası)
+
+Faz 1 (prod publish) öncesi tamamlanacak somut işler:
+
+### Kod değişiklikleri (küçük)
+- [ ] **Tenant-bazlı rate limit** — `backend/app/routers/pms.py`'a `slowapi` ile per-tenant limit:
+  - `POST /availability/sync`: `10/minute` per `api_key_hash`
+  - `POST /reservation/event`: `50/second` per `api_key_hash`
+  - 429 yanıtında `Retry-After` header zorunlu (slowapi default veriyor).
+- [ ] **`PUBLIC_BASE_URL` env desteği** — şu an reset link `FRONTEND_URL` veya `REPLIT_DEV_DOMAIN`'den türüyor; prod için aynı pattern OK ama kontrol edilmeli (`backend/app/email_service.py` veya çağrı noktası).
+- [ ] **Bootstrap script prod-guard** — `backend/scripts/bootstrap_pms_uat_tenant.py` başına `if os.getenv("ENV") == "production": sys.exit("UAT script — prod'da koşulmaz")`.
+
+### Konfigürasyon
+- [ ] Replit Reserved VM + custom region (Frankfurt) seçimi.
+- [ ] Prod secrets envanteri (CapX tarafı): `MONGO_URL` (prod cluster), `JWT_SECRET`, `RESEND_API_KEY`, Google Sheets OAuth, `FRONTEND_URL` (prod), `DB_NAME=hotel_match_prod`.
+- [ ] `PMS_ALLOW_LOOPBACK_CALLBACK` prod'da **SET EDİLMEZ**.
+- [ ] Prod cluster'da `ensure_indexes` startup'ta otomatik koşar (kod hazır), ama deploy sonrası ilk istek öncesi `python -c "import asyncio; from app.indexes import ensure_indexes; asyncio.run(ensure_indexes())"` ile pre-warm önerilir.
+
+### Smoke senaryosu (Faz 3'te kullanılacak)
+- [ ] PMS UAT'deki snapshot payload + reservation/event payload dosyaya yazılıp `scripts/prod_smoke_pms.sh` olarak bir kerede koşulur (4 adım: availability/sync → reservation/event → match-trigger → cancel-trigger).
 
 ---
 
 ## Notlar
-- Bu plan **sıralı** — Faz 0 cevapları gelmeden Faz 1 başlamaz.
+- Bu plan **sıralı** — Faz 0 cevapları geldi (✅), Faz 1 publish'e hazırız.
 - Her faz sonu kullanıcı onayı alınır (özellikle Faz 1 ve Faz 3).
 - Plan `CAPX_PMS_INBOUND_WEBHOOK_SPEC.md` ile uyumlu; spec'te değişiklik gerektirmiyor.
+- PMS tarafı kendi paralel hazırlığını ilerletiyor (capx_tenant_credentials AES-256-GCM, prod Mongo Atlas M10→M20, idempotency koleksiyonları). CapX tarafından beklenen ek koordinasyon yok.
