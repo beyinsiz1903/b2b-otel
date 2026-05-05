@@ -467,6 +467,21 @@ class PMSCallbackUpdate(BaseModel):
     callback_url: Optional[str] = Field(default=None, max_length=512)
 
 
+class PMSOutboundEventPublic(BaseModel):
+    id: str
+    event_type: str
+    status: str
+    attempts: int = 0
+    callback_url: Optional[str] = None
+    last_error: Optional[str] = None
+    last_response_status: Optional[int] = None
+    created_at: Optional[str] = None
+    delivered_at: Optional[str] = None
+    last_attempt_at: Optional[str] = None
+    match_id: Optional[str] = None
+    reference_code: Optional[str] = None
+
+
 class PMSAvailabilityRoom(BaseModel):
     room_type: str = Field(..., min_length=1, max_length=64)
     pax: int = Field(..., ge=1, le=2000)

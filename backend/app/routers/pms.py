@@ -41,7 +41,8 @@ from app.models import (
     HotelMeUpdate, HotelPublic, InventoryItemCreate, InventoryItemPublic,
     InventoryItemUpdate, InvoicePublic, MatchPublic, NotificationPublic,
     PaymentInitiate, PaymentPublic, PMSAvailabilityRoom, PMSAvailabilitySync,
-    PMSCallbackUpdate, PMSConnectResponse, PMSReservationEvent, PMSStatusResponse,
+    PMSCallbackUpdate, PMSConnectResponse, PMSOutboundEventPublic,
+    PMSReservationEvent, PMSStatusResponse,
     PriceCalculateRequest, PricingRuleCreate, PricingRulePublic, PricingRuleUpdate,
     RequestCreate, RequestPublic, ResetPasswordRequest, RoomTemplateCreate,
     RoomTemplatePublic, RoomTemplateUpdate, SheetsConfigPublic, SheetsConfigSave,
@@ -270,15 +271,52 @@ async def pms_status(current_hotel: Dict[str, Any] = Depends(get_current_hotel))
 
 @api.put("/integrations/v1/pms/callback")
 async def pms_set_callback(payload: PMSCallbackUpdate, current_hotel: Dict[str, Any] = Depends(get_current_hotel)):
-    """CapX → PMS yönünde olay bildirimi için callback URL'i ayarla."""
+    """CapX → PMS yönünde olay bildirimi için callback URL'i ayarla.
+
+    SSRF koruması: private/loopback/link-local IP'ler ve metadata endpoint'leri
+    reddedilir. Dev için `PMS_ALLOW_LOOPBACK_CALLBACK=1` env değişkeni
+    loopback/private IP'lere izin verir.
+    """
     url = (payload.callback_url or "").strip() or None
-    if url and not (url.startswith("https://") or url.startswith("http://")):
-        raise HTTPException(status_code=400, detail="callback_url http(s) ile başlamalı")
+    if url:
+        from app.services.pms_outbound import validate_callback_url as _validate_cb
+        ok, reason = _validate_cb(url)
+        if not ok:
+            raise HTTPException(status_code=400, detail=reason)
     await db.pms_integrations.update_one(
         {"hotel_id": current_hotel["_id"]},
         {"$set": {"callback_url": url, "updated_at": now_utc()}},
     )
     return {"callback_url": url}
+
+
+@api.get("/integrations/v1/pms/events", response_model=List[PMSOutboundEventPublic])
+async def pms_list_outbound_events(
+    limit: int = Query(default=50, ge=1, le=200),
+    current_hotel: Dict[str, Any] = Depends(get_current_hotel),
+):
+    """CapX → PMS yönünde gönderilen webhook olaylarının listesi (son N)."""
+    from app.services.pms_outbound import list_events as _pms_list_events
+    items = await _pms_list_events(current_hotel["_id"], limit=limit)
+    return [PMSOutboundEventPublic(**it) for it in items]
+
+
+@api.post("/integrations/v1/pms/events/{event_id}/retry")
+async def pms_retry_outbound_event(
+    event_id: str,
+    current_hotel: Dict[str, Any] = Depends(get_current_hotel),
+):
+    """Başarısız (veya beklemede kalmış) bir CapX → PMS olayını yeniden gönder."""
+    from app.services.pms_outbound import retry_event as _pms_retry_event
+    try:
+        return await _pms_retry_event(event_id, current_hotel["_id"])
+    except LookupError as e:
+        code = str(e)
+        if code == "event_not_found":
+            raise HTTPException(status_code=404, detail="Olay bulunamadı")
+        if code == "pms_disconnected":
+            raise HTTPException(status_code=409, detail="PMS bağlantısı veya callback URL tanımlı değil")
+        raise HTTPException(status_code=400, detail=code)
 
 
 @api.post("/integrations/v1/pms/disconnect")

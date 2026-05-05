@@ -81,5 +81,9 @@ async def ensure_indexes():
 
         await db.kvkk_requests.create_index("hotel_id")
 
+        await db.pms_outbound_events.create_index("hotel_id")
+        await db.pms_outbound_events.create_index([("hotel_id", 1), ("created_at", -1)])
+        await db.pms_outbound_events.create_index("status")
+
     except Exception as e:
         print(f"Index creation warning: {e}")

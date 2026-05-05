@@ -617,8 +617,226 @@ Aynı event_id ile tekrar gönderilen istek CapX'te yutulur, `{"received": true,
 pms_integrations              — connection state per hotel (unique hotel_id)
 pms_availability_snapshots    — her snapshot history
 pms_reservation_events        — her event idempotent (unique _id = X-CapX-Event-Id)
+pms_outbound_events           — CapX → PMS giden olayların outbox'ı (retry/replay)
 availability_listings         — pms_external_ref alanı eklendi (sparse index)
 ```
+
+---
+
+## 6. CapX → PMS Yönü — Inbound Webhook Şartnamesi (PMS tarafının uygulayacağı)
+
+CapX'te bir eşleşme oluştuğunda veya iptal edildiğinde, **otelin daha önce
+kaydettiği `callback_url`** adresine HTTP POST ile imzalı bir webhook gönderilir.
+PMS bu olayı alıp kendi rezervasyon kayıtlarını oluşturur/iptal eder.
+
+### 6.1 Bağlantı Hazırlığı
+
+PMS panelinden otelin CapX'e bağlanması için şu üç değer alınır
+(otel CapX panelinde "PMS Bağlantısı → Bağlan" deyince ekrana **bir kez**
+düşer; sonradan tekrar gösterilmez, kopyalanmalıdır):
+
+| Değer | Açıklama |
+|---|---|
+| `CAPX_BASE_URL` | CapX prod domain (ör. `https://capx.replit.app`) |
+| `CAPX_API_KEY`  | PMS → CapX yönündeki Bearer token (request başlıklarında) |
+| `CAPX_WEBHOOK_SECRET` | CapX → PMS yönündeki HMAC imza anahtarı (alıcı doğrulaması için) |
+
+CapX → PMS yönü için PMS'in ek olarak şunu yapması gerekir:
+**callback URL'sini CapX'e bildirmek** (otel paneli üzerinden):
+
+```
+PUT  {CAPX_BASE_URL}/api/integrations/v1/pms/callback
+Authorization: Bearer <otel JWT>      ← otelin login token'ı
+Content-Type:  application/json
+
+{ "callback_url": "https://pms.example.com/capx/webhook" }
+```
+
+> Bu URL **PMS sunucusunda public'e açık** olmalı, HTTPS önerilir, 10 saniye
+> içinde 2xx döndürmelidir. CapX 4 deneme yapar; ardışık denemeler arasında
+> 2s → 10s → 30s eksponansiyel backoff uygular. 4. deneme de başarısızsa olay
+> `failed` durumuna düşer ve manuel replay için endpoint açılır.
+>
+> **SSRF guard:** CapX `callback_url` olarak verilen adresin DNS çözümünü
+> yapar; loopback/private/link-local/metadata endpoint'lerine yönelen URL'leri
+> reddeder. Dev/test için `PMS_ALLOW_LOOPBACK_CALLBACK=1` env değişkeni
+> loopback ve özel ağlara izin verir (metadata endpoint'leri her durumda yasak).
+
+### 6.2 Webhook İstek Formatı
+
+CapX, PMS'in `callback_url` adresine şu istekle gelir:
+
+```http
+POST https://pms.example.com/capx/webhook
+Content-Type:    application/json; charset=utf-8
+User-Agent:      CapX-Webhook/1.0
+X-CapX-Event-Id:    <uuid4>                    ← idempotency anahtarı
+X-CapX-Event-Type:  match.created | match.cancelled
+X-CapX-Signature:   sha256=<hex>               ← bkz §6.3
+
+<JSON body — bkz §6.4>
+```
+
+**PMS handler şu üç adımı yapmalı:**
+1. `X-CapX-Signature` doğrula (uymuyorsa 401).
+2. `X-CapX-Event-Id` daha önce işlendi mi kontrol et (idempotent — duplicate
+   ise 200 dönüp hiçbir şey yapma).
+3. Olayı işle ve **mutlaka 2xx döndür** (yoksa retry tetiklenir).
+
+### 6.3 İmza Doğrulama (PMS tarafı örnek — Python)
+
+```python
+import hmac, hashlib
+
+def verify_capx_signature(secret: str, raw_body: bytes, header: str) -> bool:
+    if not header or not header.startswith("sha256="):
+        return False
+    received = header.split("=", 1)[1]
+    expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(received, expected)
+
+# Örnek FastAPI handler
+@app.post("/capx/webhook")
+async def capx_webhook(request: Request,
+                       x_capx_signature: str = Header(...),
+                       x_capx_event_id: str = Header(...),
+                       x_capx_event_type: str = Header(...)):
+    raw = await request.body()
+    if not verify_capx_signature(CAPX_WEBHOOK_SECRET, raw, x_capx_signature):
+        raise HTTPException(401, "bad signature")
+    if await db.processed_capx_events.find_one({"_id": x_capx_event_id}):
+        return {"received": True, "duplicate": True}
+    payload = json.loads(raw)
+    await handle_capx_event(x_capx_event_type, payload)
+    await db.processed_capx_events.insert_one({"_id": x_capx_event_id})
+    return {"received": True}
+```
+
+> **Önemli:** İmza, **alınan ham body byte'ları** üzerinden hesaplanır. Body'yi
+> JSON'a parse edip yeniden serialize ederek imza hesaplamak HMAC'i bozar.
+
+### 6.4 Payload Şemaları
+
+#### 6.4.1 `match.created`
+
+```json
+{
+  "event_type": "match.created",
+  "occurred_at": "2026-05-05T09:18:42.123456+00:00",
+  "match": {
+    "id": "80f13afa-bdab-451d-aa32-811e8dd477cb",
+    "reference_code": "SPC-2026-00001",
+    "status": "active",
+    "direction": "incoming",
+    "fee_amount": 0,
+    "currency": "TRY",
+    "accepted_at": "2026-05-05T09:18:41.987654+00:00",
+    "cancelled_at": null,
+    "cancel_reason": null,
+    "counterparty_hotel": {
+      "id": "...",
+      "name": "GuestHotelXYZ",
+      "region": "Sapanca",
+      "micro_location": "Kırkpınar",
+      "phone": "5559876543",
+      "contact_person": "B Owner"
+    },
+    "listing": {
+      "id": "...",
+      "concept": "Çift Kişilik",
+      "region": "Sapanca",
+      "micro_location": "Sapanca Merkez",
+      "date_start": "2026-05-15T00:00:00+00:00",
+      "date_end": "2026-05-17T00:00:00+00:00",
+      "nights": 2,
+      "pax": 2,
+      "capacity_label": "DBL",
+      "price_min": 1000,
+      "price_max": 2000,
+      "pms_external_ref": null
+    }
+  }
+}
+```
+
+#### 6.4.2 `match.cancelled`
+
+`match.created` ile **aynı şema**, ek alanlar dolu olur:
+
+```json
+{
+  "event_type": "match.cancelled",
+  "occurred_at": "...",
+  "match": {
+    ...,
+    "status": "cancelled",
+    "cancelled_at": "2026-05-05T09:19:55.000000+00:00",
+    "cancel_reason": "müşteri iptal etti"
+  }
+}
+```
+
+### 6.5 `direction` Alanı — Hangi Tarafa Push Geldi?
+
+CapX bir eşleşmeyi **her iki tarafın PMS'ine de** push eder (her PMS yalnızca
+kendi otelinin sahip olduğu bağlantı için olayı görür). Payload'daki
+`direction` alanı PMS'e kendisinin hangi rolde olduğunu söyler:
+
+| `direction` | Anlamı |
+|---|---|
+| `incoming` | Misafir **bu otele geliyor** (host = ilan sahibi). PMS bir rezervasyon **açmalı**. |
+| `outgoing` | Bu otel misafirini **karşı otele gönderiyor** (guest). PMS bunu **giden transfer** olarak loglayabilir; rezervasyon açmaya gerek yok. |
+
+PMS handler `direction == "incoming"` olduğunda kendi rezervasyon sistemine
+yeni kayıt açar. `outgoing` için yalnızca kayıt amacıyla saklayabilir veya
+yutabilir.
+
+### 6.6 Retry & Replay
+
+- CapX otomatik retry: **4 deneme**, ardışık denemelerin arasında `2s → 10s → 30s`
+  eksponansiyel backoff. (Bir denemenin transport timeout'u 10 saniyedir.)
+- **Concurrency güvencesi:** Her olayın `dispatch_id` token'ı vardır; manuel
+  retry token'ı yeniler → varsa eski task abort eder, duplicate POST olmaz.
+- **Restart dayanımı:** CapX süreci yeniden başlatıldığında startup hook'u
+  yetim `pending`/`in_flight` (lease süresi geçmiş) olayları toplar ve
+  teslimatı yeniden başlatır.
+- Tüm denemeler başarısız olursa olay `failed` durumuna düşer ve **otel
+  panelinden manuel yeniden gönderim** yapılabilir:
+
+  ```
+  POST {CAPX_BASE_URL}/api/integrations/v1/pms/events/{event_id}/retry
+  Authorization: Bearer <otel JWT>
+  ```
+
+- Otel panelinde son 50 olayın listesi:
+
+  ```
+  GET {CAPX_BASE_URL}/api/integrations/v1/pms/events?limit=50
+  Authorization: Bearer <otel JWT>
+  ```
+
+  Yanıt her olay için `id, event_type, status, attempts, last_error,
+  callback_url, last_response_status, created_at, delivered_at, last_attempt_at,
+  match_id, reference_code` döner.
+
+### 6.7 Hata Tablosu (CapX'in PMS yanıtına yorumu)
+
+| PMS HTTP yanıt | CapX davranışı |
+|---|---|
+| 2xx       | `delivered`. Bir daha gönderilmez. |
+| 3xx       | Hata sayılır, retry. (PMS endpoint sabit kalmalı.) |
+| 4xx (özellikle 401) | Hata sayılır, retry. PMS imzayı doğru kontrol etmeli. |
+| 5xx       | Hata sayılır, retry. |
+| Timeout (>10s) | Hata sayılır, retry. |
+| Tüm denemeler tükendi | `failed`. Manuel replay gerekir. |
+
+### 6.8 Tetiklenen Olay Noktaları (CapX tarafı, referans için)
+
+| Olay | Tetiklenme Anı | Kod Noktası |
+|---|---|---|
+| `match.created` | Talep kabul (`POST /requests/{id}/accept`) | `app/routers/requests_matches.py` accept handler sonu |
+| `match.created` | Alternatif kabul (`POST /requests/{id}/accept-alternative`) | Aynı dosyada accept-alternative handler sonu |
+| `match.cancelled` | Eşleşme iptal (`POST /matches/{id}/cancel`) | Aynı dosyada cancel_match handler sonu |
 
 ---
 

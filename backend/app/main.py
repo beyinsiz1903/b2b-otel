@@ -55,7 +55,7 @@ ROUTER_MODULES = [
 
 # Expected route counts — bump deliberately when adding endpoints. These guard
 # against silent drift if a router module is removed or renamed.
-EXPECTED_API_ROUTES = 96  # unique /api/* HTTP paths (incl. /api/ws/status)
+EXPECTED_API_ROUTES = 98  # unique /api/* HTTP paths (incl. /api/ws/status)
 EXPECTED_WS_ROUTES = 1    # /api/ws/notifications (websocket)
 # Total unique paths exposed = EXPECTED_API_ROUTES + EXPECTED_WS_ROUTES = 97
 
@@ -109,8 +109,14 @@ _verify_route_contract()
 
 @app.on_event("startup")
 async def startup_event():
-    """Uygulama başlangıcında indeksleri oluştur."""
+    """Uygulama başlangıcında indeksleri oluştur ve yetim PMS olaylarını topla."""
     await ensure_indexes()
+    try:
+        from app.services.pms_outbound import recover_pending_events
+        await recover_pending_events()
+    except Exception as e:  # pragma: no cover — recovery hatası boot'u engellememeli
+        import logging
+        logging.getLogger(__name__).warning("pms_outbound recovery failed: %s", e)
 
 
 @app.on_event("shutdown")

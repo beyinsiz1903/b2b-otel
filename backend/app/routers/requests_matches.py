@@ -71,6 +71,10 @@ from app.services.pms_helpers import (
     pms_hash_key as _pms_hash_key,
     pms_verify_hmac as _pms_verify_hmac,
 )
+from app.services.pms_outbound import (
+    build_match_event_payload as _build_match_event_payload,
+    enqueue_pms_event as _enqueue_pms_event,
+)
 from app.services.sheets_helpers import (
     build_flow as _build_flow,
     get_frontend_url as _get_frontend_url,
@@ -97,6 +101,22 @@ from email_service import (
 # --- Requests & Matches -----------------------------------------------------
 
 REQUEST_STATUS_OPEN = {"pending", "alternative_offered"}
+
+
+async def _publish_match_to_pms(event_type: str, match: Dict[str, Any], listing: Dict[str, Any]) -> None:
+    """match.created/match.cancelled olayını her iki tarafın PMS'ine push et.
+
+    PMS bağlantısı olmayan tarafa enqueue None döner (sessizce geçer).
+    Dış HTTP çağrısı arka plan task'ında yapılır → CapX response gecikmez.
+    """
+    for hid in (match.get("hotel_a_id"), match.get("hotel_b_id")):
+        if not hid:
+            continue
+        try:
+            payload = await _build_match_event_payload(event_type, match, listing, hid)
+            await _enqueue_pms_event(hid, event_type, payload)
+        except Exception as _e:  # pragma: no cover — outbound bozulması CapX akışını etkilemesin
+            logger.warning("pms_outbound publish failed hotel=%s event=%s: %s", hid, event_type, _e)
 
 
 @api.post("/requests", response_model=RequestPublic)
@@ -287,6 +307,9 @@ async def accept_request(request_id: str, current_hotel: Dict[str, Any] = Depend
     await create_notification(req["from_hotel_id"], "match_created", "Eşleşme Oluştu!", f"Talebiniz kabul edildi. Referans: {ref_code}", {"match_id": match_id})
     await create_notification(req["to_hotel_id"], "match_created", "Eşleşme Onaylandı", f"Talep kabul edildi. Referans: {ref_code}", {"match_id": match_id})
 
+    # CapX → PMS push (outbox + HMAC; bağlı olmayan otelde sessizce geçer)
+    await _publish_match_to_pms("match.created", match_doc, listing)
+
     return MatchPublic(
         id=match_id,
         request_id=req["_id"],
@@ -412,6 +435,9 @@ async def accept_alternative(request_id: str, current_hotel: Dict[str, Any] = De
 
     # Bildirimler
     await create_notification(req["to_hotel_id"], "match_created", "Alternatif Kabul Edildi", f"Alternatif teklifiniz kabul edildi. Referans: {ref_code}", {"match_id": match_id})
+
+    # CapX → PMS push
+    await _publish_match_to_pms("match.created", match_doc, listing)
 
     return MatchPublic(
         id=match_id,
@@ -544,6 +570,10 @@ async def cancel_match(
     await log_activity(current_hotel["_id"], "cancel_match", "match", match_id, {"reason": reason})
 
     refreshed = await db.matches.find_one({"_id": match_id})
+    # CapX → PMS push: iptal bildirimi
+    if refreshed:
+        listing_doc = await db.availability_listings.find_one({"_id": refreshed.get("listing_id")}) or {}
+        await _publish_match_to_pms("match.cancelled", refreshed, listing_doc)
     return MatchPublic(
         id=refreshed["_id"],
         request_id=refreshed["request_id"],

@@ -17,6 +17,20 @@ Türkiye geneli B2B otelden-otele kapasite paylaşım platformu. FastAPI + Mongo
 
 ## Son Yapılan Değişiklikler
 
+### CapX → PMS outbound webhook (yeni — eşleşme push'u)
+PMS ekibi inbound rezervasyon transferi istedi. CapX tarafında outbox + HMAC imzalı publisher eklendi.
+
+- Yeni servis: `app/services/pms_outbound.py` — outbox + 3-deneme retry (2s/10s/30s) + manuel replay.
+- Yeni koleksiyon: `pms_outbound_events` (`hotel_id+created_at`, `status` indeks).
+- Hook noktaları: accept (`/requests/{id}/accept`), accept-alternative (`/requests/{id}/accept-alternative`), cancel match (`/matches/{id}/cancel`) — her biri her iki tarafa `match.created` / `match.cancelled` push eder. PMS bağlantısı/callback URL olmayan tarafta sessizce geçer.
+- Yeni endpoint'ler (EXPECTED_API_ROUTES 96 → 98):
+  - `GET  /api/integrations/v1/pms/events?limit=50` (JWT)
+  - `POST /api/integrations/v1/pms/events/{event_id}/retry` (JWT)
+- Headers: `X-CapX-Event-Id` (idempotency), `X-CapX-Event-Type`, `X-CapX-Signature: sha256=<hex>` (`webhook_secret` ile body HMAC).
+- Payload `direction` alanı (`incoming`/`outgoing`) — host/guest tarafa göre PMS karar verir.
+- E2E smoke (mock receiver port 8765) tamam: register→login→connect→callback→listing→request→accept→webhook delivered + cancel→webhook delivered, HMAC OK, `/events` `delivered` görüyor.
+- PMS ekibi için tam alıcı şartnamesi: **`PMS_INCELEME_RAPORU.md` §6** (200+ satır eklendi: header'lar, payload şeması, Python imza doğrulama örneği, retry tablosu, tetiklenme noktaları).
+
 ### PMS entegrasyonu — `/api/integrations/v1/pms/*` (7 endpoint)
 CapX'in dış PMS sistemleriyle (Syroce vb.) konuşmasını sağlayan tam paket eklendi (`backend/server.py` sonu).
 - `POST /connect` (JWT) → API key + webhook secret üretir; rotation destekli, ham anahtar bir kez döner.
