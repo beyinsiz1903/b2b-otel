@@ -9,15 +9,15 @@ const NotificationsPage = () => {
   const [loading, setLoading] = React.useState(true);
   const [filter, setFilter] = React.useState("all");
 
-  const load = async () => {
+  const load = React.useCallback(async () => {
     try {
       const params = filter === "unread" ? { unread_only: true } : {};
       const res = await axios.get("/notifications", { params });
       setNotifications(res.data);
     } catch {} finally { setLoading(false); }
-  };
+  }, [filter]);
 
-  React.useEffect(() => { load(); }, [filter]);
+  React.useEffect(() => { load(); }, [load]);
 
   const markRead = async (id) => {
     try {
