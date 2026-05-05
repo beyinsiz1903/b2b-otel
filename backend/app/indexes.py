@@ -86,4 +86,5 @@ async def ensure_indexes():
         await db.pms_outbound_events.create_index("status")
 
     except Exception as e:
-        print(f"Index creation warning: {e}")
+        from app.config import logger
+        logger.warning("Index creation warning: %s", e)

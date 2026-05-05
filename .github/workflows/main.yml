@@ -1,58 +1,342 @@
-name: CI
+name: CapX CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
+    tags: ['v*']
   pull_request:
     branches: [main]
+  workflow_dispatch:   # manuel tetikleme
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
 
 jobs:
-  check-project:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 1. API Contract Tests — route registration kontratı
+  # ─────────────────────────────────────────────────────────────────────────
+  api-contract:
+    name: API Contract Tests
     runs-on: ubuntu-latest
-
     steps:
-      - name: Kodu indir
-        uses: actions/checkout@v4
-
-      - name: Python kur
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
-      - name: Python paketlerini kur
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Backend deps
         run: |
           python -m pip install --upgrade pip
           pip install pytest
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
+          pip install -r backend/requirements.txt
+      - name: Route contract
+        run: pytest backend/tests/test_route_contract.py -v
 
-      - name: Python dosyalarını kontrol et
-        run: |
-          python -m compileall backend tests *.py
-
-      - name: Python testlerini çalıştır
-        run: |
-          pytest -q
-
-      - name: Node.js kur
-        uses: actions/setup-node@v4
+  # ─────────────────────────────────────────────────────────────────────────
+  # 2. Architecture & Scope Guards — yapısal sınırlar
+  # ─────────────────────────────────────────────────────────────────────────
+  architecture-guards:
+    name: Architecture & Scope Guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: 20
-
-      - name: Frontend paketlerini kur
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Yapısal sınırları doğrula
         run: |
-          if [ -f frontend/package-lock.json ]; then
-            cd frontend && npm ci
-          elif [ -f frontend/package.json ]; then
-            cd frontend && npm install
-          else
-            echo "frontend/package.json bulunamadı, frontend kurulumu atlandı."
-          fi
+          python << 'PY'
+          import os, sys
+          fails = []
 
-      - name: Frontend build al
+          # 1) Router paketleri en az 20 olmalı (mevcut: 28)
+          routers = [f for f in os.listdir("backend/app/routers")
+                     if f.endswith(".py") and f != "__init__.py"]
+          if len(routers) < 20:
+              fails.append(f"routers az: {len(routers)} (>= 20 bekleniyor)")
+
+          # 2) Servis paketleri en az 4 olmalı (pms_outbound dahil mevcut: 8)
+          services = [f for f in os.listdir("backend/app/services")
+                      if f.endswith(".py") and f != "__init__.py"]
+          if len(services) < 4:
+              fails.append(f"services az: {len(services)} (>= 4 bekleniyor)")
+
+          # 3) Frontend sayfa sayısı en az 15
+          pages = [f for f in os.listdir("frontend/src/pages") if f.endswith(".js")]
+          if len(pages) < 15:
+              fails.append(f"frontend pages az: {len(pages)} (>= 15 bekleniyor)")
+
+          # 4) Yasak kalıplar — debug print() backend production kodunda olmamalı
+          import subprocess
+          out = subprocess.run(
+              ["grep", "-rn", "--include=*.py", "-E", r"^\s*print\(", "backend/app/"],
+              capture_output=True, text=True,
+          )
+          # Sadece servisler ve router'lar — services/__init__.py vb. boş.
+          stray = [l for l in out.stdout.splitlines() if l.strip()]
+          if stray:
+              fails.append(f"backend/app altında ham print() bulundu ({len(stray)} satır):\n  "
+                           + "\n  ".join(stray[:5]))
+
+          # 5) PMS spec dosyaları repo kökünde olmalı (PMS ekibi referans alıyor)
+          for required in ("PMS_INCELEME_RAPORU.md", "CAPX_PMS_INBOUND_WEBHOOK_SPEC.md", "replit.md"):
+              if not os.path.exists(required):
+                  fails.append(f"zorunlu doküman eksik: {required}")
+
+          if fails:
+              print("ARCHITECTURE GUARD FAIL:", file=sys.stderr)
+              for f in fails: print(f"  - {f}", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK  routers={len(routers)} services={len(services)} pages={len(pages)} docs=ok")
+          PY
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 3. Architecture Docs Freshness — kritik dokümanların güncelliği
+  # ─────────────────────────────────────────────────────────────────────────
+  docs-freshness:
+    name: Architecture Docs Freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # son commit tarihini alabilmek için tüm geçmiş
+      - name: Doküman tazeliği
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: |
-          if [ -f frontend/package.json ]; then
-            cd frontend && npm run build --if-present
-          else
-            echo "frontend/package.json bulunamadı, frontend build atlandı."
-          fi
+          python << 'PY'
+          import subprocess, sys, os
+
+          fails, warns = [], []
+
+          def last_modified_days(path):
+              if not os.path.exists(path): return None
+              out = subprocess.run(
+                  ["git", "log", "-1", "--format=%ct", "--", path],
+                  capture_output=True, text=True,
+              ).stdout.strip()
+              if not out: return None
+              import time
+              return (time.time() - int(out)) / 86400.0
+
+          # 1) replit.md son 90 gün içinde güncellenmiş olmalı (mimari değişiklikleri yansıtır)
+          age = last_modified_days("replit.md")
+          if age is None:
+              fails.append("replit.md git geçmişinde bulunamadı")
+          elif age > 90:
+              fails.append(f"replit.md {age:.0f} gündür güncellenmemiş (90 gün limiti)")
+
+          # 2) Spec dokümanları min içerik
+          import os
+          for path, min_lines in [
+              ("replit.md", 50),
+              ("PMS_INCELEME_RAPORU.md", 200),
+              ("CAPX_PMS_INBOUND_WEBHOOK_SPEC.md", 100),
+          ]:
+              if not os.path.exists(path):
+                  fails.append(f"eksik: {path}")
+                  continue
+              n = sum(1 for _ in open(path, encoding="utf-8"))
+              if n < min_lines:
+                  fails.append(f"{path} kısa ({n} satır, en az {min_lines} bekleniyor)")
+
+          # 3) replit.md'de zorunlu başlıklar
+          content = open("replit.md", encoding="utf-8").read()
+          for header in ("## Mimari", "## Son Yapılan Değişiklikler"):
+              if header not in content:
+                  fails.append(f"replit.md '{header}' başlığını içermiyor")
+
+          # 4) Kritik backend değişiklikleri replit.md'de yansıtılmış mı?
+          # PR'da: origin/<base>...HEAD; push'ta: <event.before>..HEAD.
+          base_ref = os.environ.get("GITHUB_BASE_REF")           # PR
+          before_sha = os.environ.get("GITHUB_EVENT_BEFORE")     # push
+          if base_ref:
+              diff_range = f"origin/{base_ref}...HEAD"
+          elif before_sha and before_sha != "0000000000000000000000000000000000000000":
+              diff_range = f"{before_sha}..HEAD"
+          else:
+              diff_range = None  # ilk push veya bilgi yok
+
+          try:
+              diff = subprocess.run(
+                  ["git", "diff", "--name-only", diff_range] if diff_range else ["true"],
+                  capture_output=True, text=True, check=False,
+              ).stdout.split()
+              critical = [f for f in diff
+                          if f.startswith("backend/app/services/")
+                          or f.startswith("backend/app/routers/")
+                          or f.startswith("backend/app/main.py")
+                          or f.startswith("backend/app/indexes.py")]
+              if critical and "replit.md" not in diff:
+                  warns.append(
+                      f"kritik backend dosyası değişti ama replit.md güncellenmedi: "
+                      + ", ".join(critical[:3])
+                  )
+          except Exception:
+              pass
+
+          if warns:
+              print("WARN:")
+              for w in warns: print(f"  - {w}")
+          if fails:
+              print("DOCS FRESHNESS FAIL:", file=sys.stderr)
+              for f in fails: print(f"  - {f}", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK  replit.md age={age:.0f}d, all docs present")
+          PY
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 4. Backend Tests — tam pytest süitir
+  # ─────────────────────────────────────────────────────────────────────────
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install -r backend/requirements.txt
+      - name: pytest
+        run: pytest -q
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 5. Frontend Build — npm ci + craco build (CRA ESLint dahil)
+  # ─────────────────────────────────────────────────────────────────────────
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci
+      - name: build
+        working-directory: frontend
+        env:
+          CI: "true"
+        run: npm run build
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 6. Lint & Static Analysis — Python syntax + pyflakes (raporlama)
+  # (Frontend ESLint zaten frontend-build job'ında CI=true ile çalışıyor.)
+  # Pyflakes refactor sonrası çok unused import bulduğu için şimdilik
+  # continue-on-error — gate'i kırmıyor ama logda görünüyor.
+  # ─────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint & Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Python compile (syntax — zorunlu)
+        run: python -m compileall -q backend/app backend/server.py backend/email_service.py
+      - name: pyflakes (raporlama)
+        continue-on-error: true
+        run: |
+          pip install pyflakes
+          pyflakes backend/app backend/email_service.py | head -100 || true
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 7. Security Scan — pip-audit + npm audit (uyarı modunda)
+  # ─────────────────────────────────────────────────────────────────────────
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: pip-audit (Python CVE)
+        continue-on-error: true   # transitive CVE'ler block etmesin
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt --strict || true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: npm audit (production deps)
+        continue-on-error: true
+        working-directory: frontend
+        run: npm audit --omit=dev || true
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 8. Deploy to Staging — manuel/branch tetikli (şimdilik skipped)
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging'
+    needs: [api-contract, backend-tests, frontend-build, lint]
+    steps:
+      - run: echo "Replit Publish (staging) — manuel olarak Replit panelinden tetikleniyor."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 9. Deploy to Production — release tetikli (şimdilik skipped)
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [api-contract, backend-tests, frontend-build, lint, security-scan]
+    steps:
+      - run: echo "Replit Publish (production) — manuel olarak Replit panelinden tetikleniyor."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 10. Quality Gate Summary — tüm zorunlu check'lerin agregresi
+  # ─────────────────────────────────────────────────────────────────────────
+  quality-gate:
+    name: Quality Gate Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - api-contract
+      - architecture-guards
+      - docs-freshness
+      - backend-tests
+      - frontend-build
+      - lint
+      - security-scan
+    steps:
+      - name: Özet
+        run: |
+          echo "=== CapX CI/CD Quality Gate ==="
+          echo "API Contract:        ${{ needs.api-contract.result }}"
+          echo "Architecture Guards: ${{ needs.architecture-guards.result }}"
+          echo "Docs Freshness:      ${{ needs.docs-freshness.result }}"
+          echo "Backend Tests:       ${{ needs.backend-tests.result }}"
+          echo "Frontend Build:      ${{ needs.frontend-build.result }}"
+          echo "Lint:                ${{ needs.lint.result }}"
+          echo "Security Scan:       ${{ needs.security-scan.result }}"
+          # security-scan continue-on-error olduğu için zorunlu değil; diğerlerinin hepsi success olmalı.
+          for r in \
+            "${{ needs.api-contract.result }}" \
+            "${{ needs.architecture-guards.result }}" \
+            "${{ needs.docs-freshness.result }}" \
+            "${{ needs.backend-tests.result }}" \
+            "${{ needs.frontend-build.result }}" \
+            "${{ needs.lint.result }}"; do
+            if [ "$r" != "success" ]; then
+              echo "GATE FAILED: bir veya birden fazla zorunlu check başarısız."
+              exit 1
+            fi
+          done
+          echo "GATE PASSED ✓"

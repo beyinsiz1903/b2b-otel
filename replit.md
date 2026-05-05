@@ -17,6 +17,21 @@ Türkiye geneli B2B otelden-otele kapasite paylaşım platformu. FastAPI + Mongo
 
 ## Son Yapılan Değişiklikler
 
+### GitHub Actions CI/CD — 10 paralel job'a bölündü (2026-05-05)
+- `.github/workflows/main.yml` tek `check-project` job'undan Syroce CI/CD şablonuna paralel **10 job**'a yenilendi:
+  1. **API Contract Tests** — `pytest backend/tests/test_route_contract.py`
+  2. **Architecture & Scope Guards** — router/service/page count alt sınırları, backend/app altında ham `print()` yasağı, kritik dokümanların varlığı
+  3. **Architecture Docs Freshness** — replit.md 90-gün limiti, min satır sayısı, zorunlu başlıklar, kritik backend değişikliklerinde replit.md güncel mi
+  4. **Backend Tests** — tam pytest süiti
+  5. **Frontend Build** — `npm ci` + `craco build` (CRA ESLint dahil, CI=true)
+  6. **Lint & Static Analysis** — `compileall` (zorunlu) + pyflakes (raporlama, continue-on-error)
+  7. **Security Scan** — pip-audit + npm audit (continue-on-error)
+  8. **Deploy to Staging** — `if: refs/heads/staging`, Replit Publish manuel
+  9. **Deploy to Production** — `if: refs/tags/v*`, Replit Publish manuel
+  10. **Quality Gate Summary** — needs: hepsi, security-scan hariç 6 zorunlu check'in success olduğunu doğrular
+- Trigger'lar: push (main+staging+v* tags), PR (main), workflow_dispatch (manuel)
+- **Yan düzeltme:** `backend/app/indexes.py:89` ham `print(f"Index creation warning: {e}")` → `logger.warning(...)` (architecture-guards check'i flagliyordu, production'a uygun)
+
 ### CapX ↔ PMS inbound rezervasyon entegrasyonu — UÇTAN UCA TAMAM (2026-05-05)
 İki taraf da hazır ve şartnameye uyumlu. CapX tarafında eşleşme oluştuğunda/iptal edildiğinde, otelin PMS'i HMAC imzalı bir webhook alır ve kendi rezervasyonunu açar/iptal eder.
 
