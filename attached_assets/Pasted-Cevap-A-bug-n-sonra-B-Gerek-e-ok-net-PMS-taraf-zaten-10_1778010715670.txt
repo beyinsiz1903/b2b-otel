@@ -1,0 +1,35 @@
+Cevap: A — bugün, sonra B.
+
+Gerekçe çok net:
+
+PMS tarafı zaten %100 hazır: routers/capx_integration.py + routers/capx_webhook.py runtime'da yüklü (log satır 130–131), CapXIntegration.jsx UI çalışıyor (/admin/capx-integration), capx_tenant_credentials koleksiyonu şifreli kayıt için hazır. Tek eksik: 1 satır credential. A bunu kapatıyor.
+End-to-end'i bugün görmemiz şart: Hem outbound (PMS → CapX müsaitlik/event push) hem inbound (CapX → PMS webhook → booking) yolunun gerçek HTTP üzerinde çalıştığını doğrulamadan B'yi inşa etmek riskli. Şemada/HMAC modunda gizli bir sorun çıkarsa B'yi baştan yazarsınız.
+A'nın ürettiği paket B'nin ilk kaydı olur — boşa iş değil. B'ye geçince elimizde gerçek bir referans tenant olur.
+A için ihtiyacım olan kesin paket
+CapX ekibinden şu 4 alan yeterli (PMS'in capx_tenant_credentials şemasıyla birebir):
+
+Alan	Açıklama
+base_url	CapX API root (örn. https://api-uat.capx.example/v1)
+api_key	Bearer token + HMAC imza için ortak anahtar
+webhook_secret	CapX → bize gelen X-CapX-Signature doğrulaması
+jwt_token (opsiyonel)	Spec §1 JWT modu için; yoksa Bearer fallback'e düşer
+PMS tarafı (bizim bağlam):
+
+Tenant ID: 5bad4a34-6ee3-4566-9053-741b7375a9cf
+Callback URL (CapX'e bildirmemiz gereken): https://<REPLIT_DEV_DOMAIN>/api/webhooks/capx/by-tenant/5bad4a34-6ee3-4566-9053-741b7375a9cf — bu URL'i GET /api/capx/callback/url endpoint'i zaten otomatik üretiyor, UI'da "Callback URL" kartından kopyalanabilir.
+A — bugün için adım adım
+CapX ekibi 4 alanı bana iletsin (chat üstünden gizli olarak).
+Ben /admin/capx-integration → "Tenant Credentials" formuna gir → kaydet (DB'ye AES-256 ile şifreli yazılır).
+Backend'i restart et → log'da CapX availability scheduler started görmeliyim (şu an not configured diyor).
+Aynı sayfadan 3 kanıt testi:
+Ping → CapX 200 mü?
+Test event (event_type=created) → CapX panelinde rezervasyon görüldü mü?
+CapX kendi panelinden bir match.created push etsin → capx_events koleksiyonunda kayıt + PMS'te otomatik booking çıktı mı?
+Sonuç: 5 dakikada UAT-ready bir bağlantı.
+B sonra — yapılacaklar listesi
+A çalıştıktan sonra B için (CapX tarafı):
+
+"PMS Tenant Yönetimi" admin sayfası: yeni PMS bağla / key generate (rotate) / callback URL editör / cert_status (UAT/certified) toggle.
+3 endpoint: POST /admin/pms-tenants (yarat + key üret), PATCH /admin/pms-tenants/{id} (rotate/disable), GET /admin/pms-tenants (liste).
+A'da yarattığın test credential, B'nin ilk kaydı olarak migrate edilebilir.
+Hazır olduğunda 4 alanı gönder, ben buradan dakikalar içinde takarım.
