@@ -6,3 +6,9 @@ id = "6Dnc4shXJdtKocRRT7gTN"
 uri = "file://CAPX_INCELEME_RAPORU.md"
 type = "text"
 title = "CapX İnceleme Raporu (Türkçe)"
+
+[[outputs]]
+id = "zAKzQ1mYpoqMPBBHphj8j"
+uri = "file://CAPX_PMS_INBOUND_WEBHOOK_SPEC.md"
+type = "text"
+title = "CapX → PMS Inbound Webhook Şartnamesi (PMS ekibine ilet)"
