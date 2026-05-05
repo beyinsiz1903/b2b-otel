@@ -1,0 +1,33 @@
+1️⃣ Prod callback URL — format ve geçiş
+Format: İlk lansman için *.replit.app (Replit Deployments default). Custom domain (örn. pms.syroce.com) 2. fazda tenant başına eklenecek; ama prod kanalı bu beklenmeden açılabilir.
+Geçiş sırası — paralel açık plan:
+PMS prod publish + smoke (Faz 1) → yeni base URL elimde
+CapX prod admin panelinden tenant 5bad4a34-… için yeni callback URL'ini bildiririm: https://<prod-domain>/api/webhooks/capx/by-tenant/5bad4a34-6ee3-4566-9053-741b7375a9cf
+UAT 7 gün paralel açık kalsın — CapX'ten her iki ortama da event akar; biz prod'da aynı verileri (idempotency_key sayesinde) çift kayıt olmadan görürüz, gözlem penceresi
+Faz 5 (7-gün gözlem) yeşil → UAT credential'ı CapX panelinden disable edilir, biz capx_tenant_credentials UAT kaydını silmeyiz (referans için)
+2️⃣ Prod credential — ayrı set onaylıyorum
+UAT/prod izolasyonu için kesin ayrı set. Akış:
+
+Prod'da yeni hotel kaydı + POST /pms/connect → yeni api_key + webhook_secret ham olarak bir kez döner
+Bizim tarafta: PUT /api/capx/tenant-credentials/{tenant_id} ile şifrelenmiş olarak capx_tenant_credentials'a yazılır (AES-256-GCM, ham anahtar diskte/log'ta tutulmaz)
+UAT credential prod'a hiç taşınmaz; CapX panelinde UAT için ayrı kalır
+3️⃣ Prod rate limit / hacim beklentisi
+Metrik	İlk 30 gün	90 gün hedefi	Tetikleyici
+availability/sync	tenant başına ~96/gün (cron, varsayılan 15 dk interval — backend/integrations/capx/scheduler.py:24) + manuel UI tetikleri	aynı; OTA-tetikli push ileride eklenecek	cron (15 dk) + manuel buton
+reservation/event	peak ~5 event/sn (cuma akşamı yoğunluk + retry burst); ortalama < 0.5/sn	peak ~20/sn	gerçek zamanlı (rezervasyon yaratıldı/güncellendi/iptal)
+Tenant sayısı	1 (Syroce pilot)	5–10	onboarding pipeline
+Rate limit önerimiz CapX tarafında:
+
+availability/sync → tenant başına dakikada 10 (manuel snapshot burst için tampon)
+reservation/event → tenant başına saniyede 50 (peak × 2.5 güvenlik payı)
+Aşımda 429 + Retry-After; bizim adapter zaten exponential backoff'la retry ediyor
+Mongo sizing notu (kendi tarafımız): İlk 30 gün için günlük ~10K event + ~96 snapshot/tenant — Atlas M10'a rahat sığar; 90 gün hedefinde M20'ye yükseltme planlıyoruz.
+
+Bizim tarafta paralel ilerleyecek prod hazırlığı
+CapX cevap beklerken ben başlayabileceklerim:
+
+✅ replit.md Gotchas notları (yapıldı)
+⏳ Prod secrets envanteri (JWT_SECRET, ROOM_QR_SECRET, MONGO_ATLAS_URI prod cluster, RESEND_API_KEY, PUBLIC_APP_URL) — Replit Deployments secret'larına aktarım listesi
+⏳ PUBLIC_BASE_URL ortam değişkeni → callback URL üretim noktasının prod'da doğru domain'i alması
+⏳ Prod Mongo cluster'ında capx_tenant_credentials, pms_availability_snapshots, availability_listings, idempotency koleksiyonları için index'lerin oluşturulması (deploy sonrası ilk istek beklenmesin)
+⏳ Prod smoke test scripti (UAT'deki availability/sync ile aynı payload, tek komut)

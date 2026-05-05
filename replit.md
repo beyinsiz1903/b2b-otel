@@ -45,6 +45,9 @@ CapX is a B2B hotel-to-hotel capacity sharing platform for Türkiye, enabling ho
 *   **DB Schema:** Defined implicitly by `app/models.py` and `app/indexes.py` (for collections like `pms_integrations`, `pms_availability_snapshots`, `pms_reservation_events`, `password_reset_tokens`).
 *   **API Contracts:** Implicitly defined by FastAPI routers in `backend/app/routers/` and `backend/app/api_router.py`.
 *   **PMS Integration Spec:** `CAPX_PMS_INBOUND_WEBHOOK_SPEC.md`
+*   **PMS Prod Deploy Plan:** `CAPX_PMS_PROD_DEPLOY_PLAN.md` (5 faz + rollback + risk matrisi + PMS cevapları)
+*   **PMS Smoke Script:** `scripts/prod_smoke_pms.sh` (4-adım: availability/sync, reservation/event x2 idempotent, fake HMAC 401, fake api key 401)
+*   **PMS UAT Bootstrap:** `backend/scripts/bootstrap_pms_uat_tenant.py` (UAT-only; `ENV=production` set ise sys.exit ile bloklar)
 
 ## Architecture decisions
 
@@ -54,6 +57,7 @@ CapX is a B2B hotel-to-hotel capacity sharing platform for Türkiye, enabling ho
 *   **Compensating Transactions:** Match acceptance flow includes compensation blocks to refund quotas and rollback request statuses if any step fails, ensuring data integrity.
 *   **Parallelized Data Fetching:** Performance-critical API endpoints (e.g., `/stats/market-trends`, `/stats/cross-region`) heavily utilize `asyncio.gather` and bulk fetching to reduce database round-trips and improve response times.
 *   **Secure Password Reset:** Password reset mechanism uses SHA-256 hashed tokens with TTL, single-use, and an atomic consumption process (`find_one_and_update`) to prevent TOCTOU vulnerabilities and user enumeration.
+*   **Per-Tenant Rate Limiting (PMS):** PMS endpoints use a custom `slowapi` `key_func` (`_pms_tenant_rate_key` in `app/routers/pms.py`) that derives the tenant identity from the SHA-256 hash of the Bearer api_key, ensuring quotas are enforced per tenant rather than per IP. Limits: `availability/sync` 10/min, `reservation/event` 50/sec; auth fails (401) are still counted to prevent brute-force probing of the rate limiter.
 
 ## Product
 
@@ -76,6 +80,8 @@ CapX is a B2B hotel-to-hotel capacity sharing platform for Türkiye, enabling ho
 *   If deploying cross-origin in production, `REACT_APP_BACKEND_URL` must be set to the full backend origin. For same-origin deployment, it can be left empty.
 *   PMS callback URLs from CapX have an SSRF guard; private/loopback/link-local/metadata IPs are rejected unless `PMS_ALLOW_LOOPBACK_CALLBACK=1` is set in development.
 *   Password reset in development mode returns a `debug_token`; in production, an email integration (e.g., Resend) is required for actual email delivery.
+*   `backend/scripts/bootstrap_pms_uat_tenant.py` is **UAT-only** and refuses to run when `ENV=production` (or `prod`). For prod tenant onboarding, use the admin UI flow that calls `POST /api/integrations/v1/pms/connect` (JWT-protected; raw api_key+webhook_secret returned exactly once).
+*   PMS rate limit returns HTTP 429 + `Retry-After` header on quota exceed. Failed-auth (401) attempts are also counted against the per-tenant quota — a misconfigured PMS client hammering with a wrong api_key will hit 429 after 10 attempts/min on `availability/sync`.
 
 ## Pointers
 

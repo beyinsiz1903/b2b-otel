@@ -329,8 +329,24 @@ async def pms_disconnect(current_hotel: Dict[str, Any] = Depends(get_current_hot
     return {"status": "revoked"}
 
 
+def _pms_tenant_rate_key(request: Request) -> str:
+    """Per-tenant rate limit key: API key SHA-256 ilk 16 hex.
+
+    PMS endpoint'leri Bearer api_key ile auth olur; aynı key'in farklı IP'lerden
+    paralel çağrılarını tek tenant olarak sayalım diye key_func'u override ediyoruz.
+    Auth yoksa IP'ye düşer (auth dependency zaten 401 atacak).
+    """
+    auth = request.headers.get("authorization", "") or ""
+    if auth.lower().startswith("bearer "):
+        token = auth[7:].strip()
+        if token:
+            return "pms:" + hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
+    from slowapi.util import get_remote_address
+    return get_remote_address(request)
+
+
 @api.post("/integrations/v1/pms/availability/sync")
-@limiter.limit("60/minute")
+@limiter.limit("10/minute", key_func=_pms_tenant_rate_key)
 async def pms_availability_sync(
     request: Request,
     payload: PMSAvailabilitySync,
@@ -425,7 +441,7 @@ async def pms_availability_sync(
 
 
 @api.post("/integrations/v1/pms/reservation/event")
-@limiter.limit("120/minute")
+@limiter.limit("50/second", key_func=_pms_tenant_rate_key)
 async def pms_reservation_event(
     request: Request,
     authorization: Optional[str] = Header(default=None),

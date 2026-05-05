@@ -29,6 +29,12 @@ from datetime import datetime, timezone
 import bcrypt
 from motor.motor_asyncio import AsyncIOMotorClient
 
+if os.getenv("ENV", "").lower() in {"production", "prod"}:
+    sys.exit(
+        "[bootstrap_pms_uat_tenant] BU SCRIPT YALNIZ UAT İÇİNDİR. "
+        "Prod tenant onboarding için admin UI üzerinden POST /api/integrations/v1/pms/connect kullanın."
+    )
+
 
 UAT_HOTEL_EMAIL = "pms-uat@capx.local"
 UAT_HOTEL_NAME = "PMS UAT Test Hotel"
