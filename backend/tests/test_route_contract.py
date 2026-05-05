@@ -21,11 +21,11 @@ from fastapi.routing import APIRoute, APIWebSocketRoute  # noqa: E402
 from app.main import app, EXPECTED_API_ROUTES, EXPECTED_WS_ROUTES  # noqa: E402
 
 
-def main() -> int:
+def _collect_failures() -> list[str]:
     api_paths = {r.path for r in app.routes if isinstance(r, APIRoute) and r.path.startswith("/api")}
     ws_paths = {r.path for r in app.routes if isinstance(r, APIWebSocketRoute)}
 
-    failures = []
+    failures: list[str] = []
     if len(api_paths) != EXPECTED_API_ROUTES:
         failures.append(
             f"/api path count mismatch: expected {EXPECTED_API_ROUTES}, got {len(api_paths)}"
@@ -38,12 +38,24 @@ def main() -> int:
         failures.append("missing /api/ws/notifications websocket route")
     if "/api/ws/status" not in api_paths:
         failures.append("missing /api/ws/status http route")
+    return failures
 
+
+def test_route_contract():
+    """Pytest entry — assert tüm route kontratları sağlanıyor."""
+    failures = _collect_failures()
+    assert not failures, "\n".join(failures)
+
+
+def main() -> int:
+    """CLI entry — geriye uyumluluk için korunuyor (`python -m tests.test_route_contract`)."""
+    failures = _collect_failures()
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)
         return 1
-
+    api_paths = {r.path for r in app.routes if isinstance(r, APIRoute) and r.path.startswith("/api")}
+    ws_paths = {r.path for r in app.routes if isinstance(r, APIWebSocketRoute)}
     print(f"OK  {len(api_paths)} /api paths  {len(ws_paths)} ws routes")
     return 0
 

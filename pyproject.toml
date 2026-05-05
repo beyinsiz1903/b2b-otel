@@ -1,3 +1,10 @@
+[tool.pytest.ini_options]
+# Sadece backend/tests altındaki gerçek pytest dosyalarını topla.
+# Root'taki eski script'ler (backend_test.py, *_websocket_test.py, vb.)
+# canlı sunucuya istek atan manuel araçlardır, pytest fixture değildir.
+testpaths = ["backend/tests"]
+addopts = "-q"
+
 [project]
 name = "repl-nix-workspace"
 version = "0.1.0"

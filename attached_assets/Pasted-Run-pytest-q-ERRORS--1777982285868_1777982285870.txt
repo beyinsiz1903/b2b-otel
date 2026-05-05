@@ -1,0 +1,57 @@
+Run pytest -q
+
+==================================== ERRORS ====================================
+____________ ERROR collecting backend/tests/test_route_contract.py _____________
+backend/tests/test_route_contract.py:21: in <module>
+    from app.main import app, EXPECTED_API_ROUTES, EXPECTED_WS_ROUTES  # noqa: E402
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/app/main.py:23: in <module>
+    from app.config import limiter, logger
+backend/app/config.py:16: in <module>
+    MONGO_URL = os.environ["MONGO_URL"]
+                ^^^^^^^^^^^^^^^^^^^^^^^
+<frozen os>:679: in __getitem__
+    ???
+E   KeyError: 'MONGO_URL'
+__________________ ERROR collecting backend_websocket_test.py __________________
+ImportError while importing test module '/home/runner/work/b2b-otel/b2b-otel/backend_websocket_test.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend_websocket_test.py:13: in <module>
+    import aiohttp
+E   ModuleNotFoundError: No module named 'aiohttp'
+___________________ ERROR collecting final_websocket_test.py ___________________
+ImportError while importing test module '/home/runner/work/b2b-otel/b2b-otel/final_websocket_test.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+final_websocket_test.py:8: in <module>
+    import aiohttp
+E   ModuleNotFoundError: No module named 'aiohttp'
+____________________ ERROR collecting tests/backend_test.py ____________________
+ImportError while importing test module '/home/runner/work/b2b-otel/b2b-otel/tests/backend_test.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.backend_test'
+=============================== warnings summary ===============================
+../../../../../opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/starlette/formparsers.py:12
+  /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/starlette/formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR backend/tests/test_route_contract.py - KeyError: 'MONGO_URL'
+ERROR backend_websocket_test.py
+ERROR final_websocket_test.py
+ERROR tests/backend_test.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 4 errors during collection !!!!!!!!!!!!!!!!!!!!
+1 warning, 4 errors in 0.68s
+Error: Process completed with exit code 2.
