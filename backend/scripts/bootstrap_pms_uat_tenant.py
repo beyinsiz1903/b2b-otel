@@ -1,16 +1,21 @@
 """
-PMS UAT tenant'ını CapX tarafında bir kerede oluşturur ve PMS ekibine
-verilecek 4 credential'ı yazdırır.
+PMS UAT tenant'ını CapX tarafında bir kerede kurar:
+  1. UAT için bir hotel kaydı upsert eder (approved durumda)
+  2. pms_integrations kaydını gerçek hotel _id'sine bağlar
+  3. (Verilirse) callback_url'i set eder
 
 Kullanım:
-    python backend/scripts/bootstrap_pms_uat_tenant.py \
-        [--callback-url https://<PMS-DOMAIN>/api/webhooks/capx/by-tenant/<UUID>] \
-        [--hotel-id pms-uat-tenant-5bad4a34] \
-        [--rotate]   # mevcut kayıt varsa anahtarı yeniden üret
+    # İlk kurulum: hotel + credential
+    python backend/scripts/bootstrap_pms_uat_tenant.py
 
-İki yön de aynı webhook_secret'ı kullanır (PMS→CapX ingestion HMAC + CapX→PMS
-outbound HMAC). Bu repo'daki /integrations/v1/pms/connect endpoint'inin
-mantığını birebir mirror eder; sadece JWT auth yerine doğrudan DB'ye yazar.
+    # Mevcut kayda callback URL ekle (api_key değişmez):
+    python backend/scripts/bootstrap_pms_uat_tenant.py \
+        --callback-url https://<PMS-DOMAIN>/api/webhooks/capx/by-tenant/<UUID>
+
+    # Anahtarı yeniden üret (PMS'e yeni credential paketi göndermek gerekir):
+    python backend/scripts/bootstrap_pms_uat_tenant.py --rotate
+
+İki yön de aynı webhook_secret'ı kullanır.
 """
 import argparse
 import asyncio
@@ -18,23 +23,62 @@ import hashlib
 import os
 import secrets
 import sys
+import uuid
 from datetime import datetime, timezone
 
+import bcrypt
 from motor.motor_asyncio import AsyncIOMotorClient
+
+
+UAT_HOTEL_EMAIL = "pms-uat@capx.local"
+UAT_HOTEL_NAME = "PMS UAT Test Hotel"
+LEGACY_FAKE_HOTEL_ID = "pms-uat-tenant-5bad4a34"
 
 
 def _hash_key(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+async def _ensure_hotel(db) -> str:
+    """UAT hotel kaydını upsert et, _id döndür."""
+    existing = await db.hotels.find_one({"email": UAT_HOTEL_EMAIL})
+    if existing:
+        return existing["_id"]
+
+    hotel_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    random_pw = secrets.token_urlsafe(24)
+    pw_hash = bcrypt.hashpw(random_pw.encode(), bcrypt.gensalt()).decode()
+
+    await db.hotels.insert_one({
+        "_id": hotel_id,
+        "name": UAT_HOTEL_NAME,
+        "region": "Sapanca",
+        "micro_location": "PMS Sandbox",
+        "concept": "PMS UAT integration test tenant — not a real hotel.",
+        "address": "—",
+        "phone": "+90 000 000 0000",
+        "whatsapp": None,
+        "website": None,
+        "contact_person": "PMS Integration",
+        "email": UAT_HOTEL_EMAIL,
+        "password_hash": pw_hash,
+        "is_admin": False,
+        "approval_status": "approved",
+        "rejection_reason": None,
+        "documents": [],
+        "created_at": now,
+        "updated_at": now,
+    })
+    return hotel_id
+
+
 async def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--hotel-id", default="pms-uat-tenant-5bad4a34",
-                    help="CapX tarafında bu PMS tenant'ı için kullanılacak hotel_id")
     ap.add_argument("--callback-url", default=None,
-                    help="PMS'in CapX→PMS push'larını alacağı URL (opsiyonel; sonra da set edilebilir)")
+                    help="PMS'in CapX→PMS push'larını alacağı URL")
     ap.add_argument("--rotate", action="store_true",
-                    help="Var olan kaydı override et (yeni api_key + webhook_secret üret)")
+                    help="api_key + webhook_secret'ı yeniden üret (PMS'e yeni paket gerekir)")
     args = ap.parse_args()
 
     mongo_url = os.environ.get("MONGO_URL")
@@ -46,34 +90,58 @@ async def main() -> int:
     client = AsyncIOMotorClient(mongo_url)
     db = client[db_name]
 
-    existing = await db.pms_integrations.find_one({"hotel_id": args.hotel_id})
-    if existing and existing.get("status") == "active" and not args.rotate:
+    # 1) Hotel kaydı (idempotent)
+    real_hotel_id = await _ensure_hotel(db)
+
+    # 2) Eski fake hotel_id'li kayıt varsa, gerçek hotel_id'ye taşı
+    legacy = await db.pms_integrations.find_one({"hotel_id": LEGACY_FAKE_HOTEL_ID})
+    existing = await db.pms_integrations.find_one({"hotel_id": real_hotel_id})
+
+    if legacy and not existing:
+        # Migration: eski kaydı gerçek hotel_id'ye relink (api_key/webhook_secret KORU)
+        await db.pms_integrations.update_one(
+            {"hotel_id": LEGACY_FAKE_HOTEL_ID},
+            {"$set": {"hotel_id": real_hotel_id, "updated_at": datetime.now(timezone.utc)}},
+        )
+        existing = await db.pms_integrations.find_one({"hotel_id": real_hotel_id})
+        print(f"✓ Eski fake hotel_id'li kayıt gerçek hotel_id'ye taşındı: {real_hotel_id}")
+    elif legacy and existing:
+        # Çakışma: ikisi de varsa eskisini sil
+        await db.pms_integrations.delete_one({"hotel_id": LEGACY_FAKE_HOTEL_ID})
+        print(f"✓ Eski fake kayıt silindi (gerçek kayıt zaten mevcuttu).")
+
+    # 3) Credential kararı
+    if existing and not args.rotate:
         print("=" * 64)
-        print(f"UYARI: '{args.hotel_id}' için zaten aktif kayıt var.")
-        print(f"  api_key_last4: {existing.get('api_key_last4')}")
-        print(f"  callback_url:  {existing.get('callback_url')}")
-        print(f"  connected_at:  {existing.get('connected_at')}")
-        print(f"  rotated_at:    {existing.get('rotated_at')}")
-        print()
-        print("Yeni anahtar üretmek için --rotate ile tekrar çalıştır.")
-        print("Sadece callback_url set etmek için --callback-url ile çalıştır.")
+        print("✓ Mevcut PMS UAT tenant kaydı bulundu — anahtarlar KORUNDU.")
+        print(f"  hotel_id (real)  : {real_hotel_id}")
+        print(f"  api_key_last4    : {existing.get('api_key_last4')}")
+        print(f"  callback_url     : {existing.get('callback_url')}")
+        print(f"  status           : {existing.get('status')}")
+        print(f"  connected_at     : {existing.get('connected_at')}")
         print("=" * 64)
-        # callback URL update'i rotation olmadan da yap
+
         if args.callback_url:
             await db.pms_integrations.update_one(
-                {"hotel_id": args.hotel_id},
-                {"$set": {"callback_url": args.callback_url, "updated_at": datetime.now(timezone.utc)}},
+                {"hotel_id": real_hotel_id},
+                {"$set": {"callback_url": args.callback_url,
+                          "updated_at": datetime.now(timezone.utc)}},
             )
             print(f"\n✓ callback_url güncellendi: {args.callback_url}")
+        else:
+            print("\nℹ Yeni anahtar üretmek için --rotate ile çalıştır.")
+            print("ℹ callback_url set etmek için --callback-url ile çalıştır.")
+
         client.close()
         return 0
 
+    # Yeni kayıt veya rotate
     api_key = "capx_pk_" + secrets.token_urlsafe(32)
     webhook_secret = "capx_ws_" + secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
 
     set_doc = {
-        "hotel_id": args.hotel_id,
+        "hotel_id": real_hotel_id,
         "api_key_hash": _hash_key(api_key),
         "api_key_last4": api_key[-4:],
         "webhook_secret": webhook_secret,
@@ -85,14 +153,14 @@ async def main() -> int:
         set_doc["callback_url"] = args.callback_url
 
     await db.pms_integrations.update_one(
-        {"hotel_id": args.hotel_id},
+        {"hotel_id": real_hotel_id},
         {
             "$set": set_doc,
             "$setOnInsert": {
                 "connected_at": now,
                 "sync_count": 0,
                 "event_count": 0,
-                "callback_url": args.callback_url,  # ilk insert'te None olabilir
+                "callback_url": args.callback_url,
                 "last_sync_at": None,
                 "last_event_at": None,
             },
@@ -116,14 +184,14 @@ async def main() -> int:
     print(f"  POST {base_url}/api/integrations/v1/pms/reservation/event")
     print()
     print("CapX tarafı kayıt detayı:")
-    print(f"  hotel_id      : {args.hotel_id}")
-    print(f"  callback_url  : {args.callback_url or '(henüz set edilmedi — sonra --callback-url ile ekle)'}")
-    print(f"  status        : active")
-    print(f"  rotated_at    : {now.isoformat()}")
+    print(f"  hotel_id (real) : {real_hotel_id}")
+    print(f"  hotel_email     : {UAT_HOTEL_EMAIL}")
+    print(f"  callback_url    : {args.callback_url or '(henüz set edilmedi)'}")
+    print(f"  status          : active")
+    print(f"  rotated_at      : {now.isoformat()}")
     print("=" * 64)
     print()
     print("ÖNEMLİ: api_key bir daha gösterilmez — şimdi güvenli bir yere kaydet.")
-    print("Anahtarı kaybedersen --rotate ile yenisini üretmek zorunda kalırsın.")
     print()
 
     client.close()
