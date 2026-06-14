@@ -49,7 +49,7 @@ CapX is a B2B hotel-to-hotel capacity sharing platform for Türkiye, enabling ho
 *   **PMS Smoke Script:** `scripts/prod_smoke_pms.sh` (4-adım: availability/sync, reservation/event x2 idempotent, fake HMAC 401, fake api key 401)
 *   **PMS UAT Bootstrap:** `backend/scripts/bootstrap_pms_uat_tenant.py` (UAT-only; `ENV=production` set ise sys.exit ile bloklar)
 
-## Architecture decisions
+## Mimari
 
 *   **Modular Backend:** The backend, initially a monolithic `server.py`, has been refactored into a modular `app/` package structure for better organization and maintainability, preserving original API routes.
 *   **Atomic State Transitions:** Critical operations like match acceptance and cancellation use atomic database operations (`$inc`, `update_one` with filters, unique indexes) to prevent race conditions and ensure data consistency.
@@ -74,6 +74,14 @@ CapX is a B2B hotel-to-hotel capacity sharing platform for Türkiye, enabling ho
 
 *   Communication language: **Turkish**
 *   This repo is currently not being run; the scope is static code review + Turkish report + targeted fixes.
+
+## Son Yapılan Değişiklikler
+
+*   **Per-tenant PMS rate limit** (`backend/app/routers/pms.py`): `_pms_tenant_rate_key` ile IP yerine api_key SHA-256 hash'i bazlı sayım. `availability/sync` → 10/dk, `reservation/event` → 50/sn. Smoke kanıtlandı (attempt 11 → HTTP 429).
+*   **Bootstrap prod-guard** (`backend/scripts/bootstrap_pms_uat_tenant.py`): `ENV=production/prod` ise `sys.exit` — UAT script prod'da çalışamaz.
+*   **Prod smoke script** (`scripts/prod_smoke_pms.sh`): 4-adım tek komut smoke; `set +x` ile `bash -x` debug modunda bile secret leak yok; `PMS_SMOKE_DEBUG=1` opt-in.
+*   **CapX ↔ PMS UAT entegrasyonu — uçtan uca yeşil**: availability/sync (200 + snapshot+listing upsert), reservation/event (200 + idempotent), CapX→PMS match.created webhook (delivered 2s, HMAC iki yönlü).
+*   **CI/CD 10 paralel job** (`.github/workflows/main.yml`): api-contract, architecture-guards, docs-freshness, backend-tests, frontend-build, lint, security-scan, deploy-staging, deploy-production, quality-gate.
 
 ## Gotchas
 
