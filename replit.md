@@ -101,4 +101,4 @@ CapX is a B2B hotel-to-hotel capacity sharing platform for Türkiye, enabling ho
 *   **Craco Documentation:** [https://craco.js.org/](https://craco.js.org/)
 *   **Replit Guides:** [https://docs.replit.com/](https://docs.replit.com/)
 *   **Full Review Report:** `CAPX_INCELEME_RAPORU.md`
-*   **PMS Integration Report:** `PMS_INCELEME_RAPORU.md`
+*   **PMS Integration Report:** `PMS_INCELEME_RAPORU.md`*   **DigitalOcean App Platform:** Added `.python-version` file for `uv` support.
